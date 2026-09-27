@@ -458,18 +458,30 @@ setupCategoryFilterPanel();
                         ? usdaApiClient.fetchFoodById(fdcId)
                         : usdaApiClient.searchPrimary(product);
 
-                // 2. Category: prefer the USDA API's own foodCategory for this product;
-                //    fall back to the rule-based classifier only when the API has none.
-                String foodType = primaryResult.foodCategory;
-                boolean apiCategory = !TextUtils.isEmpty(foodType.trim());
-                if (!apiCategory) {
-                    foodType = new RuleBasedFoodClassifier().classify(primaryResult.name);
-                }
-                if (TextUtils.isEmpty(foodType)) foodType = "Uncategorized";
-
-                // 3. Unbranded search intent: when the query does not name the product's
+                // 2. Unbranded search intent: when the query does not name the product's
                 //    brand, treat it as a category search and always show clean choices.
                 boolean categoryIntent = isCategorySearch(product, primaryResult);
+
+                // 3. Category: for a category search the category should represent the
+                //    query, not the single top hit — one record can be miscategorized by
+                //    USDA (e.g. a "BREAD" filed under "Cookies & Biscuits"), which would
+                //    otherwise retitle and refilter the whole result set. Use the
+                //    majority vote over the top results. For a branded search keep the
+                //    product's own foodCategory; fall back to the rule-based classifier
+                //    only when the API has none.
+                String foodType;
+                boolean apiCategory;
+                if (categoryIntent && !TextUtils.isEmpty(primaryResult.queryCategory)) {
+                    foodType = primaryResult.queryCategory;
+                    apiCategory = true;
+                } else {
+                    foodType = primaryResult.foodCategory;
+                    apiCategory = !TextUtils.isEmpty(foodType.trim());
+                    if (!apiCategory) {
+                        foodType = new RuleBasedFoodClassifier().classify(primaryResult.name);
+                    }
+                }
+                if (TextUtils.isEmpty(foodType)) foodType = "Uncategorized";
 
                 // 4. Fetch clean candidates (+ which flagged categories blocked the rest)
                 AlternateSearchResult altSearch = alternateFinder.findCleanAlternates(

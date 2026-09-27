@@ -21,7 +21,9 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * All USDA FoodData Central HTTP traffic: the primary product search, paged
@@ -205,7 +207,40 @@ public class UsdaApiClient {
         }
         if (chosen == null) chosen = foods.getJSONObject(0);
 
-        return buildProductResult(chosen, productName);
+        ProductResult result = buildProductResult(chosen, productName);
+        // Consensus category for generic queries (see majorityFoodCategory).
+        result.queryCategory = majorityFoodCategory(ranked);
+        return result;
+    }
+
+    /**
+     * Majority food category over the top ranked candidates. For a generic
+     * (category) query the panel category should represent the query as a
+     * whole: a single record can be miscategorized by USDA (e.g. a "BREAD"
+     * filed under "Cookies & Biscuits"), which would otherwise retitle and
+     * refilter the entire result set. Spam-brand records are excluded; ties
+     * break by rank order. Returns "" when no candidate has a category.
+     */
+    private String majorityFoodCategory(List<JSONObject> ranked) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        int considered = 0;
+        for (JSONObject food : ranked) {
+            if (considered >= 15) break;
+            if (UsdaSpamFilter.isSpamBrand(food.optString("brandOwner", ""))) continue;
+            String category = food.optString("foodCategory", "").trim();
+            if (category.isEmpty()) continue;
+            counts.put(category, counts.getOrDefault(category, 0) + 1);
+            considered++;
+        }
+        String best = "";
+        int bestCount = 0;
+        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+            if (entry.getValue() > bestCount) {
+                best = entry.getKey();
+                bestCount = entry.getValue();
+            }
+        }
+        return best;
     }
 
     /**
