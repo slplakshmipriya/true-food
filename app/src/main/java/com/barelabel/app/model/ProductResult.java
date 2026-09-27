@@ -11,6 +11,12 @@ public class ProductResult {
     public boolean found;
     public String name, brand, ingredients;
     public String foodCategory = "";
+    /**
+     * Majority-vote foodCategory over the top results for the query; set only by
+     * searchPrimary. Used for category searches so one miscategorized record
+     * can't retitle and refilter the whole result set.
+     */
+    public String queryCategory = "";
     public String gtinUpc = "";
     public String brandName = "";
     public String brandOwner = "";

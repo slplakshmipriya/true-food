@@ -61,6 +61,7 @@ import com.barelabel.app.search.CleanAlternateFinder;
 import com.barelabel.app.ui.AlternatesCardController;
 import com.barelabel.app.ui.CompareViewBuilder;
 import com.barelabel.app.ui.ProductDetailDialog;
+import com.barelabel.app.util.GenericWords;
 import com.barelabel.app.util.StringNormalizer;
 
 import android.view.ViewGroup;
@@ -388,9 +389,15 @@ setupCategoryFilterPanel();
     private boolean isCategorySearch(String query, ProductResult product) {
         if (TextUtils.isEmpty(query) || product == null || !product.found) return false;
         Set<String> brandTokens = StringNormalizer.wordTokens(product.brandName + " " + product.brandOwner);
-        if (brandTokens.isEmpty()) return false;
+        // No brand on the hit -> can't be a branded match for the query,
+        // so treat it as a category search (hides the misleading verdict card).
+        if (brandTokens.isEmpty()) return true;
         for (String token : StringNormalizer.wordTokens(query)) {
-            if (token.length() >= 4 && brandTokens.contains(token)) {
+            // Only a *distinctive* brand token counts as naming the brand:
+            // generic food words a human would type ("bread", "peanut butter")
+            // must not match e.g. the "bread" in "The Bread Factory Inc."
+            if (token.length() >= 4 && brandTokens.contains(token)
+                    && !GenericWords.isGeneric(this, token)) {
                 return false; // query names the brand -> branded product search
             }
         }
@@ -451,18 +458,30 @@ setupCategoryFilterPanel();
                         ? usdaApiClient.fetchFoodById(fdcId)
                         : usdaApiClient.searchPrimary(product);
 
-                // 2. Category: prefer the USDA API's own foodCategory for this product;
-                //    fall back to the rule-based classifier only when the API has none.
-                String foodType = primaryResult.foodCategory;
-                boolean apiCategory = !TextUtils.isEmpty(foodType.trim());
-                if (!apiCategory) {
-                    foodType = new RuleBasedFoodClassifier().classify(primaryResult.name);
-                }
-                if (TextUtils.isEmpty(foodType)) foodType = "Uncategorized";
-
-                // 3. Unbranded search intent: when the query does not name the product's
+                // 2. Unbranded search intent: when the query does not name the product's
                 //    brand, treat it as a category search and always show clean choices.
                 boolean categoryIntent = isCategorySearch(product, primaryResult);
+
+                // 3. Category: for a category search the category should represent the
+                //    query, not the single top hit — one record can be miscategorized by
+                //    USDA (e.g. a "BREAD" filed under "Cookies & Biscuits"), which would
+                //    otherwise retitle and refilter the whole result set. Use the
+                //    majority vote over the top results. For a branded search keep the
+                //    product's own foodCategory; fall back to the rule-based classifier
+                //    only when the API has none.
+                String foodType;
+                boolean apiCategory;
+                if (categoryIntent && !TextUtils.isEmpty(primaryResult.queryCategory)) {
+                    foodType = primaryResult.queryCategory;
+                    apiCategory = true;
+                } else {
+                    foodType = primaryResult.foodCategory;
+                    apiCategory = !TextUtils.isEmpty(foodType.trim());
+                    if (!apiCategory) {
+                        foodType = new RuleBasedFoodClassifier().classify(primaryResult.name);
+                    }
+                }
+                if (TextUtils.isEmpty(foodType)) foodType = "Uncategorized";
 
                 // 4. Fetch clean candidates (+ which flagged categories blocked the rest)
                 AlternateSearchResult altSearch = alternateFinder.findCleanAlternates(

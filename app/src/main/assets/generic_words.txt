@@ -1,0 +1,996 @@
+# Generic food words — terms a human would type when searching for food.
+# Used by isCategorySearch: a query token only counts as "naming the brand"
+# when it is NOT on this list, so "bread" never matches "The Bread Factory Inc."
+# One phrase per line, lowercase, as a person would type it. Lines starting
+# with # are comments. Phrases are tokenized on load ("peanut butter" -> peanut, butter).
+# Deliberately contains no brand names (no oreo, jif, coke, nutella, cheetos...).
+
+# ---- Bread & bakery ----
+bread
+white bread
+whole wheat bread
+wheat bread
+multigrain bread
+sourdough
+sourdough bread
+rye bread
+pumpernickel
+bagel
+bagels
+english muffin
+muffin
+muffins
+blueberry muffin
+croissant
+croissants
+biscuit
+biscuits
+dinner roll
+dinner rolls
+roll
+rolls
+bun
+buns
+hamburger bun
+hot dog bun
+toast
+french toast
+garlic bread
+banana bread
+zucchini bread
+pumpkin bread
+cornbread
+corn bread
+flatbread
+naan
+pita
+pita bread
+tortilla
+tortillas
+flour tortilla
+corn tortilla
+wrap
+wraps
+sandwich
+sandwiches
+breakfast sandwich
+club sandwich
+grilled cheese sandwich
+sub
+hoagie
+pizza
+cheese pizza
+pepperoni pizza
+pizza dough
+calzone
+stromboli
+pretzel
+pretzels
+soft pretzel
+cracker
+crackers
+graham cracker
+graham crackers
+saltine
+saltines
+rice cake
+rice cakes
+breadsticks
+bread crumbs
+croutons
+stuffing
+danish
+strudel
+cinnamon roll
+cinnamon rolls
+sticky bun
+eclair
+bear claw
+
+# ---- Grains, pasta & rice ----
+pasta
+spaghetti
+macaroni
+penne
+fettuccine
+linguine
+lasagna
+ravioli
+tortellini
+noodles
+egg noodles
+rice noodles
+ramen
+udon
+soba
+lo mein
+chow mein
+pad thai
+rice
+white rice
+brown rice
+jasmine rice
+basmati rice
+fried rice
+wild rice
+quinoa
+couscous
+barley
+oats
+oatmeal
+grits
+farro
+bulgur
+millet
+flour
+all purpose flour
+whole wheat flour
+almond flour
+coconut flour
+oat flour
+cornmeal
+cornstarch
+tapioca
+tahini
+
+# ---- Breakfast ----
+cereal
+corn flakes
+oatmeal
+instant oatmeal
+granola
+muesli
+pancakes
+waffles
+french toast
+breakfast burrito
+eggs benedict
+home fries
+hash browns
+tater tots
+bacon
+sausage
+breakfast sausage
+yogurt parfait
+smoothie bowl
+acai bowl
+avocado toast
+bagel with cream cheese
+
+# ---- Dairy & cheese ----
+milk
+whole milk
+skim milk
+2% milk
+1% milk
+chocolate milk
+strawberry milk
+oat milk
+almond milk
+soy milk
+coconut milk
+cashew milk
+buttermilk
+half and half
+heavy cream
+whipping cream
+sour cream
+cream cheese
+cottage cheese
+ricotta
+ricotta cheese
+mozzarella
+mozzarella cheese
+cheddar
+cheddar cheese
+swiss cheese
+american cheese
+provolone
+parmesan
+parmesan cheese
+feta
+feta cheese
+goat cheese
+blue cheese
+brie
+gouda
+pepper jack
+colby jack
+monterey jack
+cheese slices
+string cheese
+cheese curds
+cheese dip
+queso
+mac and cheese
+macaroni and cheese
+grilled cheese
+quesadilla
+nachos
+cheese pizza
+cheesecake
+butter
+salted butter
+unsalted butter
+ghee
+margarine
+yogurt
+greek yogurt
+frozen yogurt
+kefir
+ice cream
+vanilla ice cream
+chocolate ice cream
+strawberry ice cream
+gelato
+sorbet
+sherbet
+frozen custard
+custard
+pudding
+chocolate pudding
+vanilla pudding
+rice pudding
+tapioca pudding
+bread pudding
+whipped cream
+eggnog
+coffee creamer
+
+# ---- Eggs ----
+egg
+eggs
+fried egg
+fried eggs
+scrambled eggs
+hard boiled eggs
+soft boiled eggs
+deviled eggs
+egg salad
+omelet
+omelette
+cheese omelet
+frittata
+quiche
+
+# ---- Meat & poultry ----
+chicken
+fried chicken
+grilled chicken
+baked chicken
+chicken breast
+chicken thighs
+chicken wings
+buffalo wings
+chicken nuggets
+chicken tenders
+chicken strips
+rotisserie chicken
+turkey
+ground turkey
+turkey breast
+deli turkey
+turkey bacon
+beef
+ground beef
+steak
+ribeye
+sirloin
+filet mignon
+brisket
+pot roast
+meatloaf
+meatballs
+swedish meatballs
+burger
+hamburger
+cheeseburger
+bacon cheeseburger
+veggie burger
+pork
+pork chops
+pulled pork
+pork tenderloin
+bacon
+canadian bacon
+ham
+deli ham
+honey ham
+sausage
+italian sausage
+kielbasa
+chorizo
+pepperoni
+salami
+prosciutto
+hot dog
+hot dogs
+corn dog
+corn dogs
+bratwurst
+jerky
+beef jerky
+ribs
+baby back ribs
+lamb
+lamb chops
+veal
+duck
+meat
+deli meat
+lunch meat
+cold cuts
+pastrami
+corned beef
+sloppy joe
+taco meat
+
+# ---- Seafood ----
+fish
+salmon
+grilled salmon
+tuna
+canned tuna
+tuna salad
+shrimp
+fried shrimp
+crab
+crab cakes
+lobster
+lobster roll
+scallops
+cod
+tilapia
+halibut
+mahi mahi
+catfish
+sardines
+anchovies
+oysters
+clams
+mussels
+calamari
+fish sticks
+fish tacos
+sushi
+sashimi
+poke
+poke bowl
+ceviche
+seafood
+seafood pasta
+shrimp scampi
+clam chowder
+lobster bisque
+
+# ---- Fruit ----
+apple
+apples
+banana
+bananas
+orange
+oranges
+strawberry
+strawberries
+blueberry
+blueberries
+raspberry
+raspberries
+blackberry
+blackberries
+grape
+grapes
+peach
+peaches
+pear
+pears
+plum
+plums
+cherry
+cherries
+lemon
+lemons
+lime
+limes
+mango
+mangoes
+pineapple
+watermelon
+cantaloupe
+honeydew
+kiwi
+coconut
+avocado
+avocados
+guava
+papaya
+passion fruit
+dragon fruit
+pomegranate
+cranberry
+cranberries
+apricot
+apricots
+fig
+figs
+date
+dates
+prune
+prunes
+raisin
+raisins
+fruit
+fresh fruit
+mixed fruit
+fruit salad
+fruit cup
+applesauce
+banana bread
+lemon bars
+
+# ---- Vegetables ----
+potato
+potatoes
+baked potato
+mashed potatoes
+french fries
+fries
+sweet potato
+sweet potatoes
+sweet potato fries
+yam
+yams
+tomato
+tomatoes
+cherry tomatoes
+grape tomatoes
+onion
+onions
+red onion
+green onions
+carrot
+carrots
+baby carrots
+lettuce
+romaine
+romaine lettuce
+iceberg lettuce
+spinach
+spinach dip
+kale
+kale chips
+arugula
+broccoli
+broccoli cheddar soup
+cauliflower
+cauliflower rice
+cucumber
+cucumbers
+bell pepper
+bell peppers
+red pepper
+green pepper
+jalapeno
+habanero
+corn
+corn on the cob
+creamed corn
+peas
+green peas
+snap peas
+snow peas
+green beans
+black beans
+kidney beans
+pinto beans
+baked beans
+refried beans
+chili beans
+chickpeas
+hummus
+lentils
+lentil soup
+edamame
+mushroom
+mushrooms
+stuffed mushrooms
+garlic
+roasted garlic
+celery
+celery sticks
+cabbage
+brussels sprouts
+asparagus
+artichoke
+artichoke dip
+eggplant
+eggplant parmesan
+zucchini
+zucchini bread
+squash
+butternut squash
+pumpkin
+okra
+radish
+radishes
+beets
+turnip
+collard greens
+mustard greens
+vegetable
+vegetables
+veggie
+veggies
+veggie tray
+veggie burger
+salad
+caesar salad
+garden salad
+chef salad
+cobb salad
+greek salad
+coleslaw
+potato salad
+pasta salad
+macaroni salad
+pickle
+pickles
+dill pickle
+sweet pickles
+sauerkraut
+kimchi
+olives
+black olives
+green olives
+
+# ---- Snacks ----
+chips
+potato chips
+tortilla chips
+corn chips
+pita chips
+veggie chips
+kettle chips
+bbq chips
+sour cream and onion chips
+pretzels
+popcorn
+microwave popcorn
+buttered popcorn
+kettle corn
+caramel corn
+cheese puffs
+cheese balls
+trail mix
+granola bar
+granola bars
+protein bar
+protein bars
+cereal bar
+fruit snacks
+gummies
+gummy bears
+gummy worms
+sour gummies
+nuts
+mixed nuts
+peanuts
+honey roasted peanuts
+almonds
+cashews
+pistachios
+walnuts
+pecans
+macadamia nuts
+sunflower seeds
+pumpkin seeds
+dip
+french onion dip
+ranch dip
+salsa
+salsa verde
+guacamole
+queso dip
+spinach artichoke dip
+hummus
+pimento cheese
+crackers and cheese
+ants on a log
+
+# ---- Sweets, desserts & candy ----
+chocolate
+milk chocolate
+dark chocolate
+white chocolate
+chocolate chips
+chocolate bar
+chocolate bars
+candy
+candy bar
+candy bars
+lollipop
+lollipops
+gummy bears
+gummy worms
+sour candy
+licorice
+red licorice
+jelly beans
+candy corn
+taffy
+salt water taffy
+fudge
+hot fudge
+toffee
+caramel
+caramels
+butterscotch
+marshmallow
+marshmallows
+smores
+cotton candy
+cookie
+cookies
+chocolate chip cookies
+oatmeal cookies
+oatmeal raisin cookies
+sugar cookies
+peanut butter cookies
+snickerdoodle
+snickerdoodles
+brownie
+brownies
+fudge brownies
+blondie
+blondies
+cake
+chocolate cake
+vanilla cake
+carrot cake
+red velvet cake
+birthday cake
+cupcake
+cupcakes
+pie
+apple pie
+pumpkin pie
+pecan pie
+key lime pie
+cherry pie
+blueberry pie
+lemon meringue pie
+donut
+donuts
+glazed donut
+doughnut
+doughnuts
+apple fritter
+muffin
+cinnamon roll
+eclair
+danish
+strudel
+ice cream cake
+tiramisu
+flan
+creme brulee
+mousse
+chocolate mousse
+trifle
+cobbler
+peach cobbler
+crisp
+apple crisp
+popsicle
+popsicles
+sugar
+brown sugar
+powdered sugar
+cinnamon sugar
+honey
+maple syrup
+pancake syrup
+jam
+jelly
+strawberry jam
+grape jelly
+preserves
+orange marmalade
+apple butter
+peanut butter
+almond butter
+cashew butter
+sunflower seed butter
+cookie butter
+
+# ---- Beverages ----
+water
+sparkling water
+seltzer
+club soda
+tonic water
+mineral water
+coconut water
+juice
+orange juice
+apple juice
+grape juice
+cranberry juice
+pineapple juice
+lemonade
+pink lemonade
+limeade
+iced tea
+sweet tea
+green tea
+black tea
+herbal tea
+chai
+chai latte
+coffee
+iced coffee
+cold brew
+decaf coffee
+latte
+vanilla latte
+cappuccino
+espresso
+mocha
+hot chocolate
+soda
+cola
+diet cola
+root beer
+ginger ale
+cream soda
+orange soda
+grape soda
+sports drink
+energy drink
+protein shake
+smoothie
+fruit smoothie
+green smoothie
+milkshake
+chocolate milkshake
+vanilla milkshake
+strawberry milkshake
+kombucha
+apple cider
+hot apple cider
+eggnog
+beer
+light beer
+wine
+red wine
+white wine
+rose wine
+champagne
+sangria
+margarita
+pina colada
+
+# ---- Condiments, sauces & spreads ----
+ketchup
+mustard
+yellow mustard
+dijon mustard
+honey mustard
+mayo
+mayonnaise
+relish
+hot sauce
+sriracha
+soy sauce
+teriyaki sauce
+bbq sauce
+barbecue sauce
+buffalo sauce
+pasta sauce
+marinara
+marinara sauce
+alfredo sauce
+tomato sauce
+tomato paste
+tomato soup
+pizza sauce
+enchilada sauce
+taco sauce
+curry sauce
+peanut sauce
+sweet and sour sauce
+duck sauce
+tartar sauce
+cocktail sauce
+worcestershire sauce
+fish sauce
+oyster sauce
+hoisin sauce
+salad dressing
+ranch dressing
+italian dressing
+caesar dressing
+blue cheese dressing
+vinaigrette
+balsamic vinaigrette
+thousand island dressing
+french dressing
+vinegar
+apple cider vinegar
+balsamic vinegar
+red wine vinegar
+white vinegar
+olive oil
+extra virgin olive oil
+coconut oil
+vegetable oil
+canola oil
+avocado oil
+sesame oil
+peanut oil
+cooking spray
+salt
+sea salt
+kosher salt
+garlic salt
+pepper
+black pepper
+red pepper flakes
+cinnamon
+nutmeg
+vanilla
+vanilla extract
+almond extract
+cocoa powder
+baking soda
+baking powder
+cornstarch
+gravy
+turkey gravy
+mushroom gravy
+
+# ---- Frozen ----
+frozen pizza
+frozen yogurt
+frozen fruit
+frozen berries
+frozen vegetables
+frozen dinners
+tv dinner
+pot pie
+chicken pot pie
+frozen burrito
+frozen burritos
+taquitos
+egg rolls
+spring rolls
+mozzarella sticks
+pizza rolls
+pizza bites
+frozen waffles
+ice cream sandwich
+
+# ---- Canned & pantry staples ----
+canned tuna
+canned chicken
+canned beans
+canned corn
+canned tomatoes
+chicken noodle soup
+tomato soup
+chicken soup
+vegetable soup
+minestrone
+clam chowder
+chili
+white chicken chili
+beef stew
+broth
+chicken broth
+beef broth
+vegetable broth
+bone broth
+stock
+chicken stock
+instant noodles
+cup noodles
+mac and cheese cups
+baked beans
+tuna salad
+chicken salad
+egg salad
+canned fruit
+canned peaches
+
+# ---- International ----
+tacos
+fish tacos
+burrito
+breakfast burrito
+bean burrito
+enchilada
+cheese enchiladas
+quesadilla
+nachos
+fajitas
+chicken fajitas
+tamale
+tamales
+churro
+churros
+paella
+gyro
+falafel
+shawarma
+kebab
+kebabs
+souvlaki
+moussaka
+pierogi
+schnitzel
+sauerkraut
+fish and chips
+shepherds pie
+samosa
+samosas
+empanada
+empanadas
+naan
+butter chicken
+chicken tikka masala
+biryani
+chicken biryani
+pad thai
+drunken noodles
+fried rice
+orange chicken
+kung pao chicken
+general tsos chicken
+sweet and sour chicken
+egg drop soup
+hot and sour soup
+wonton soup
+pho
+beef pho
+bulgogi
+bibimbap
+korean bbq
+sushi roll
+california roll
+spicy tuna roll
+poke bowl
+teriyaki chicken
+chicken katsu
+tempura
+tempura shrimp
+dim sum
+dumplings
+potstickers
+bao
+bao buns
+spring rolls
+egg rolls
+
+# ---- General ----
+food
+snack
+snacks
+meal
+meals
+dinner
+lunch
+breakfast
+brunch
+dessert
+desserts
+appetizer
+appetizers
+side dish
+side dishes
+entree
+leftovers
+comfort food
+soul food
+fast food
+street food
+party platter
