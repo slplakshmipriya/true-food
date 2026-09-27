@@ -388,7 +388,9 @@ setupCategoryFilterPanel();
     private boolean isCategorySearch(String query, ProductResult product) {
         if (TextUtils.isEmpty(query) || product == null || !product.found) return false;
         Set<String> brandTokens = StringNormalizer.wordTokens(product.brandName + " " + product.brandOwner);
-        if (brandTokens.isEmpty()) return false;
+        // No brand on the hit -> can't be a branded match for the query,
+        // so treat it as a category search (hides the misleading verdict card).
+        if (brandTokens.isEmpty()) return true;
         for (String token : StringNormalizer.wordTokens(query)) {
             if (token.length() >= 4 && brandTokens.contains(token)) {
                 return false; // query names the brand -> branded product search
