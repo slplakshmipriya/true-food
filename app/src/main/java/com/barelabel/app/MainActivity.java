@@ -61,6 +61,7 @@ import com.barelabel.app.search.CleanAlternateFinder;
 import com.barelabel.app.ui.AlternatesCardController;
 import com.barelabel.app.ui.CompareViewBuilder;
 import com.barelabel.app.ui.ProductDetailDialog;
+import com.barelabel.app.util.GenericWords;
 import com.barelabel.app.util.StringNormalizer;
 
 import android.view.ViewGroup;
@@ -392,7 +393,11 @@ setupCategoryFilterPanel();
         // so treat it as a category search (hides the misleading verdict card).
         if (brandTokens.isEmpty()) return true;
         for (String token : StringNormalizer.wordTokens(query)) {
-            if (token.length() >= 4 && brandTokens.contains(token)) {
+            // Only a *distinctive* brand token counts as naming the brand:
+            // generic food words a human would type ("bread", "peanut butter")
+            // must not match e.g. the "bread" in "The Bread Factory Inc."
+            if (token.length() >= 4 && brandTokens.contains(token)
+                    && !GenericWords.isGeneric(this, token)) {
                 return false; // query names the brand -> branded product search
             }
         }
