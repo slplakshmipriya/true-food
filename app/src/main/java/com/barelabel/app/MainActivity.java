@@ -61,6 +61,7 @@ import com.barelabel.app.search.CleanAlternateFinder;
 import com.barelabel.app.ui.AlternatesCardController;
 import com.barelabel.app.ui.CompareViewBuilder;
 import com.barelabel.app.ui.ProductDetailDialog;
+import com.barelabel.app.util.CategorySearchDecider;
 import com.barelabel.app.util.GenericWords;
 import com.barelabel.app.util.StringNormalizer;
 
@@ -387,21 +388,10 @@ setupCategoryFilterPanel();
      * always shows clean choices for that category.
      */
     private boolean isCategorySearch(String query, ProductResult product) {
-        if (TextUtils.isEmpty(query) || product == null || !product.found) return false;
-        Set<String> brandTokens = StringNormalizer.wordTokens(product.brandName + " " + product.brandOwner);
-        // No brand on the hit -> can't be a branded match for the query,
-        // so treat it as a category search (hides the misleading verdict card).
-        if (brandTokens.isEmpty()) return true;
-        for (String token : StringNormalizer.wordTokens(query)) {
-            // Only a *distinctive* brand token counts as naming the brand:
-            // generic food words a human would type ("bread", "peanut butter")
-            // must not match e.g. the "bread" in "The Bread Factory Inc."
-            if (token.length() >= 4 && brandTokens.contains(token)
-                    && !GenericWords.isGeneric(this, token)) {
-                return false; // query names the brand -> branded product search
-            }
-        }
-        return true;
+        // Pure decision lives in CategorySearchDecider (unit-tested); this only
+        // supplies the GenericWords-backed generic-word lookup.
+        return CategorySearchDecider.isCategorySearch(query, product,
+                token -> GenericWords.isGeneric(this, token));
     }
 
     private void search() {

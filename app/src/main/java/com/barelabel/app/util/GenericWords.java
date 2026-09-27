@@ -4,6 +4,7 @@ import android.content.Context;
 import android.util.Log;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -41,12 +42,7 @@ public final class GenericWords {
                     try (InputStream is = context.getAssets().open(ASSET_FILE);
                          BufferedReader reader = new BufferedReader(
                                  new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            String trimmed = line.trim();
-                            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue;
-                            out.addAll(StringNormalizer.wordTokens(trimmed));
-                        }
+                        out.addAll(parseLines(reader));
                     }
                 }
             } catch (Exception e) {
@@ -55,6 +51,22 @@ public final class GenericWords {
             cachedTokens = out;
             return out;
         }
+    }
+
+    /**
+     * Parses generic-word tokens from asset lines. Pure logic (no Android),
+     * unit-testable: skips blank lines and '#' comments, tokenizes the rest
+     * with StringNormalizer.wordTokens.
+     */
+    static Set<String> parseLines(BufferedReader reader) throws IOException {
+        Set<String> out = new HashSet<>();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue;
+            out.addAll(StringNormalizer.wordTokens(trimmed));
+        }
+        return out;
     }
 
     /**

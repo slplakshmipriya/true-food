@@ -186,31 +186,39 @@ public class UsdaApiClient {
         // choosing — generic queries ("bread") otherwise land on fake
         // records filed under non-food companies.
         List<JSONObject> ranked = UsdaSpamFilter.rankedCandidates(foods, productName);
-        JSONObject chosen = null;
-        for (JSONObject f : ranked) {
-            if (UsdaSpamFilter.isSpamBrand(f.optString("brandOwner", ""))) {
-                continue;
-            }
-            String ingredients = f.optString("ingredients", "");
-            if (!TextUtils.isEmpty(ingredients.trim())) {
-                chosen = f;
-                break;
-            }
-        }
+        JSONObject chosen = selectTopPick(foods, ranked);
         if (chosen == null) {
-            for (JSONObject f : ranked) {
-                if (!UsdaSpamFilter.isSpamBrand(f.optString("brandOwner", ""))) {
-                    chosen = f;
-                    break;
-                }
-            }
+            return ProductResult.notFound();
         }
-        if (chosen == null) chosen = foods.getJSONObject(0);
 
         ProductResult result = buildProductResult(chosen, productName);
         // Consensus category for generic queries (see majorityFoodCategory).
         result.queryCategory = majorityFoodCategory(ranked);
         return result;
+    }
+
+    /**
+     * Top-pick selection (pure logic, unit-testable): first ranked non-spam
+     * hit with non-blank ingredients, else first ranked non-spam hit, else
+     * the raw first hit. Null when there are no foods.
+     */
+    static JSONObject selectTopPick(JSONArray foods, List<JSONObject> ranked) {
+        if (foods == null || foods.length() == 0) {
+            return null;
+        }
+        for (JSONObject f : ranked) {
+            if (UsdaSpamFilter.isSpamBrand(f.optString("brandOwner", ""))
+                    || f.optString("ingredients", "").trim().isEmpty()) {
+                continue;
+            }
+            return f;
+        }
+        for (JSONObject f : ranked) {
+            if (!UsdaSpamFilter.isSpamBrand(f.optString("brandOwner", ""))) {
+                return f;
+            }
+        }
+        return foods.optJSONObject(0);
     }
 
     /**
@@ -220,8 +228,9 @@ public class UsdaApiClient {
      * filed under "Cookies & Biscuits"), which would otherwise retitle and
      * refilter the entire result set. Spam-brand records are excluded; ties
      * break by rank order. Returns "" when no candidate has a category.
+     * Pure logic (no Android), unit-testable.
      */
-    private String majorityFoodCategory(List<JSONObject> ranked) {
+    static String majorityFoodCategory(List<JSONObject> ranked) {
         Map<String, Integer> counts = new LinkedHashMap<>();
         int considered = 0;
         for (JSONObject food : ranked) {
