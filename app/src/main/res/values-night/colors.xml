@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark variants of the app gradient: deep green night palette.
+         Surfaces/cards stay light by design (floating-card look), so the
+         hardcoded text colors in cards stay readable in both modes. -->
+    <color name="gradient_start">#0A1F13</color>
+    <color name="gradient_center">#0E2A1A</color>
+    <color name="gradient_end">#16240F</color>
+</resources>

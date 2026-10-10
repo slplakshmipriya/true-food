@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Night override: same Material 3 DayNight theme, dark status-bar icons off. -->
+    <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="colorPrimary">@color/green</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorSecondary">#D97706</item>
+        <item name="android:colorAccent">@color/green</item>
+        <item name="android:windowBackground">@drawable/bg_app_gradient</item>
+        <item name="android:navigationBarColor">@color/gradient_end</item>
+        <item name="android:statusBarColor">@color/gradient_start</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

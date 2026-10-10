@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App-wide background: soft diagonal gradient. Colors come from
+     @color/gradient_* so values-night automatically gets the dark variant. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:startColor="@color/gradient_start"
+        android:centerColor="@color/gradient_center"
+        android:endColor="@color/gradient_end"
+        android:type="linear" />
+</shape>

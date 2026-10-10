@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+    <!-- Material 3 + DayNight: follows the system light/dark setting.
+         The window background is the app gradient; surface cards stay light
+         in both modes (floating-card look) so in-card text colors hold up. -->
+    <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#2E7D32</item>
-        <item name="android:navigationBarColor">#F7F9F7</item>
-        <item name="android:statusBarColor">#F7F9F7</item>
+        <item name="colorPrimary">@color/green</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorSecondary">#D97706</item>
+        <item name="android:colorAccent">@color/green</item>
+        <item name="android:windowBackground">@drawable/bg_app_gradient</item>
+        <item name="android:navigationBarColor">@color/gradient_end</item>
+        <item name="android:statusBarColor">@color/gradient_start</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>
