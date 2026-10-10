@@ -649,6 +649,10 @@ public class AlternatesCardController {
                     final String gtin = rp.product.gtinUpc == null ? "" : rp.product.gtinUpc;
                     final String tag = "price:" + gtin;
                     final String stripTag = "offers:" + gtin;
+                    // Product name for the dead-link search fallback on logo tap.
+                    String pn = rp.product.name == null ? "" : rp.product.name.trim();
+                    String pb = rp.product.brand == null ? "" : rp.product.brand.trim();
+                    final String productName = (pn + (pb.isEmpty() ? "" : " " + pb)).trim();
                     View rowView = rowViews.get(i);
                     if (!(rowView instanceof ViewGroup)) continue;
                     final TextView priceView = (TextView) ((ViewGroup) rowView).findViewWithTag(tag);
@@ -672,7 +676,7 @@ public class AlternatesCardController {
                         android.widget.LinearLayout stripView = stripRef.get();
                         if (stripView != null
                                 && TextUtils.equals(String.valueOf(stripView.getTag()), stripTag)) {
-                            bindRetailerStrip(stripView, offers);
+                            bindRetailerStrip(stripView, offers, productName);
                         }
                     });
                 }
@@ -716,7 +720,8 @@ public class AlternatesCardController {
      * remainder collapses into a "+N" chip.
      */
     private void bindRetailerStrip(android.widget.LinearLayout strip,
-            java.util.List<com.barelabel.app.pricing.UpcOffers.Offer> offers) {
+            java.util.List<com.barelabel.app.pricing.UpcOffers.Offer> offers,
+            String productName) {
         Context ctx = activity;
         strip.removeAllViews();
         if (offers == null || offers.isEmpty()) {
@@ -740,9 +745,12 @@ public class AlternatesCardController {
             logo.setBackground(chipBg);
             logo.setContentDescription(offer.merchant);
             RetailerLogos.loadInto(ctx, logo, offer.merchant, offer.domain);
-            if (!offer.link.isEmpty() && offer.link.startsWith("https://")) {
+            if (!offer.link.isEmpty() && offer.link.startsWith("http")) {
                 logo.setClickable(true);
-                logo.setOnClickListener(v -> openOfferLink(offer.link));
+                final String link = offer.link;
+                final String merchant = offer.merchant;
+                final String domain = offer.domain;
+                logo.setOnClickListener(v -> openOfferLink(link, productName, merchant, domain));
             }
             strip.addView(logo);
         }
@@ -755,8 +763,85 @@ public class AlternatesCardController {
         }
     }
 
-    /** Opens a retailer's product page in a Custom Tab (URL bar visible). */
-    private void openOfferLink(String url) {
+    /**
+     * Opens a retailer's product page in a Custom Tab (URL bar visible).
+     * UPCitemdb offer URLs rot — products get delisted, merchants die — and
+     * a Custom Tab can't report a 404, so the URL is probed first on a
+     * background thread. A hard-dead page (404/410/DNS/timeout) falls back
+     * to a merchant-scoped search for the product; anything ambiguous
+     * (bot-blocked 403s, 5xx) opens the link as-is rather than stranding
+     * the user.
+     */
+    private void openOfferLink(String url, String productName,
+                               String merchant, String domain) {
+        new Thread(() -> {
+            String target = url;
+            boolean dead = linkLooksDead(url);
+            if (dead) {
+                String q = (!domain.isEmpty() ? "site:" + domain + " " : "")
+                        + productName
+                        + (merchant.isEmpty() ? "" : " " + merchant);
+                try {
+                    target = "https://www.google.com/search?q="
+                            + java.net.URLEncoder.encode(q.trim(), "UTF-8");
+                } catch (Exception ignored) {
+                    target = url;
+                    dead = false;
+                }
+            }
+            final String open = target;
+            final boolean showFallbackNote = dead;
+            android.app.Activity act = activity;
+            if (act == null) return;
+            act.runOnUiThread(() -> {
+                if (showFallbackNote) {
+                    android.widget.Toast.makeText(act,
+                            "That product page is gone — showing search results instead.",
+                            android.widget.Toast.LENGTH_SHORT).show();
+                }
+                launchUrl(open);
+            });
+        }).start();
+    }
+
+    /** True only on a hard-dead page: 404/410, unresolvable host, or timeout. */
+    private static boolean linkLooksDead(String url) {
+        java.net.HttpURLConnection conn = null;
+        try {
+            conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            conn.setRequestMethod("HEAD");
+            conn.setConnectTimeout(6000);
+            conn.setReadTimeout(6000);
+            conn.setInstanceFollowRedirects(true);
+            conn.setRequestProperty("User-Agent",
+                    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
+                            + "(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36");
+            int code = conn.getResponseCode();
+            if (code == 405 || code == 501) {
+                // HEAD not implemented: retry as GET, headers only.
+                conn.disconnect();
+                conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(6000);
+                conn.setReadTimeout(6000);
+                conn.setInstanceFollowRedirects(true);
+                conn.setRequestProperty("User-Agent",
+                        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
+                                + "(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36");
+                code = conn.getResponseCode();
+            }
+            return code == 404 || code == 410;
+        } catch (java.net.UnknownHostException | java.net.SocketTimeoutException e) {
+            return true;
+        } catch (Exception e) {
+            return false;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    /** Opens a URL in a Custom Tab, falling back to a plain VIEW intent. */
+    private void launchUrl(String url) {
         try {
             new androidx.browser.customtabs.CustomTabsIntent.Builder()
                     .setShowTitle(true)

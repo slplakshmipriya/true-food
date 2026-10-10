@@ -97,4 +97,52 @@ public class UpcOffersTest {
     public void normalizeGtin_tooShortReturnsEmpty() {
         assertEquals("", UpcOffers.normalizeGtin("12345"));
     }
+
+    @Test
+    public void sanitizeLink_keepsAbsoluteHttps() {
+        assertEquals("https://www.walmart.com/ip/123",
+                UpcOffers.sanitizeLink("https://www.walmart.com/ip/123"));
+    }
+
+    @Test
+    public void sanitizeLink_fixesProtocolRelative() {
+        assertEquals("https://www.walmart.com/ip/123",
+                UpcOffers.sanitizeLink("//www.walmart.com/ip/123"));
+    }
+
+    @Test
+    public void sanitizeLink_fixesBareHost() {
+        assertEquals("https://www.walmart.com/ip/123",
+                UpcOffers.sanitizeLink("www.walmart.com/ip/123"));
+    }
+
+    @Test
+    public void sanitizeLink_dropsNonHttpScheme() {
+        assertEquals("", UpcOffers.sanitizeLink("javascript:alert(1)"));
+        assertEquals("", UpcOffers.sanitizeLink("ftp://files.example.com/x"));
+    }
+
+    @Test
+    public void sanitizeLink_dropsGarbage() {
+        assertEquals("", UpcOffers.sanitizeLink(null));
+        assertEquals("", UpcOffers.sanitizeLink("   "));
+        assertEquals("", UpcOffers.sanitizeLink("not a url"));
+    }
+
+    @Test
+    public void sanitizeLink_encodesSpaces() {
+        assertEquals("https://shop.example.com/a%20b",
+                UpcOffers.sanitizeLink("https://shop.example.com/a b"));
+    }
+
+    @Test
+    public void parseOffers_sanitizesLinks() throws JSONException {
+        JSONArray offers = new JSONArray()
+                .put(offer("A", "a.com", 5.00, "", "//a.com/p"))
+                .put(offer("B", "b.com", 6.00, "", "javascript:alert(1)"));
+        List<UpcOffers.Offer> parsed = UpcOffers.parseOffers(offers);
+        assertEquals(2, parsed.size());
+        assertEquals("https://a.com/p", parsed.get(0).link);
+        assertEquals("", parsed.get(1).link);
+    }
 }

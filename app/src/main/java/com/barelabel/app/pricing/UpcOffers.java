@@ -55,6 +55,28 @@ public final class UpcOffers {
     }
 
     /**
+     * Cleans a raw UPCitemdb offer link into an absolute http(s) URL, or ""
+     * when unusable. Handles protocol-relative ("//host/...") and bare-host
+     * ("host/path") links; drops non-http(s) schemes (javascript:, …) and
+     * anything that doesn't look like a host.
+     */
+    public static String sanitizeLink(String raw) {
+        if (raw == null) return "";
+        String s = raw.trim();
+        if (s.isEmpty()) return "";
+        if (s.startsWith("//")) {
+            s = "https:" + s;
+        } else if (!s.matches("^[a-zA-Z][a-zA-Z0-9+.-]*://.*")) {
+            int slash = s.indexOf('/');
+            String host = slash < 0 ? s : s.substring(0, slash);
+            if (!host.contains(".") || s.contains(" ")) return "";
+            s = "https://" + s;
+        }
+        if (!(s.startsWith("http://") || s.startsWith("https://"))) return "";
+        return s.replace(" ", "%20");
+    }
+
+    /**
      * Parses UPCitemdb {@code offers[]}: drops out-of-stock and unusable
      * prices, keeps the cheapest offer per retailer (dedupe key: domain,
      * else merchant name), sorted cheapest first.
@@ -76,7 +98,8 @@ public final class UpcOffers {
             String key = !domain.isEmpty() ? domain : merchant.toLowerCase(Locale.US);
             if (key.isEmpty()) continue;
             Offer offer = new Offer(merchant, domain, price,
-                    o.optString("currency", ""), o.optString("link", "").trim());
+                    o.optString("currency", ""),
+                    sanitizeLink(o.optString("link", "")));
             Offer prev = cheapestByStore.get(key);
             if (prev == null || price < prev.price) {
                 cheapestByStore.put(key, offer);
