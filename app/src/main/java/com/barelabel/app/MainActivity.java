@@ -1,6 +1,7 @@
 package com.barelabel.app;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
@@ -219,6 +220,7 @@ protected void onCreate(Bundle savedInstanceState) {
     }
 
 setupCategoryFilterPanel();
+    maybeShowOnboarding();
     // 4c. Bottom navigation: Search | Compare | History. Search is the default.
     bottomNav = findViewById(R.id.bottomNav);
     View searchTabContent = findViewById(R.id.mainRootLayout);
@@ -1183,6 +1185,48 @@ private void showFullIngredientsDialog(ProductResult product) {
         title += " (" + product.brand + ")";
     }
     ProductDetailDialog.show(this, title, product.ingredients, product.flagged);
+}
+
+
+
+private void maybeShowOnboarding() {
+    final SharedPreferences prefs =
+            getSharedPreferences("barelabel_onboarding", MODE_PRIVATE);
+    if (prefs.getBoolean("onboarded_v1", false)) return;
+
+    final List<String> categories = getFlaggedCategories();
+    final List<AvoidListPresets.Preset> presets = AvoidListPresets.presets();
+    CharSequence[] labels = new CharSequence[presets.size()];
+    for (int i = 0; i < presets.size(); i++) {
+        AvoidListPresets.Preset p = presets.get(i);
+        labels[i] = p.label + " — " + p.description;
+    }
+    new AlertDialog.Builder(this)
+            .setTitle("What do you avoid?")
+            .setSingleChoiceItems(labels, 0, null)
+            .setPositiveButton("Save", (dialog, which) -> {
+                int selected = ((AlertDialog) dialog).getListView()
+                        .getCheckedItemPosition();
+                applyOnboardingPreset(
+                        presets.get(Math.max(0, selected)), categories);
+                prefs.edit().putBoolean("onboarded_v1", true).apply();
+            })
+            .setNegativeButton("Skip", (dialog, which) ->
+                    prefs.edit().putBoolean("onboarded_v1", true).apply())
+            .show();
+}
+
+/** Applies a first-run preset: stores the category toggles and rebuilds the filter panel. */
+private void applyOnboardingPreset(AvoidListPresets.Preset preset,
+                                   List<String> categories) {
+    Set<String> enabled = AvoidListPresets.enabledFor(preset, categories);
+    for (String category : categories) {
+        boolean on = enabled.contains(category);
+        CategoryPreferenceManager.setCategoryEnabled(this, category, on);
+        AnalyticsTracker.categoryToggled(category, on);
+    }
+    setupCategoryFilterPanel();
+    updateFilterSummary();
 }
 
 
