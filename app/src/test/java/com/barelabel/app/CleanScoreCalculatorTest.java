@@ -35,7 +35,7 @@ public class CleanScoreCalculatorTest {
     @Test
     public void categoriesOnly() {
         // 100 - 15*2 = 70
-        assertEquals(70, CleanScoreCalculator.score(true, 1, 2));
+        assertEquals(70, CleanScoreCalculator.score(true, 0, 2));
     }
 
     @Test

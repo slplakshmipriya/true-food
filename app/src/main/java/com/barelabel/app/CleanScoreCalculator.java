@@ -31,11 +31,13 @@ public final class CleanScoreCalculator {
         if (!available) {
             return UNAVAILABLE;
         }
-        if (flaggedIngredients <= 0) {
+        int ingredients = Math.max(0, flaggedIngredients);
+        int categories = Math.max(0, flaggedCategories);
+        if (ingredients <= 0 && categories <= 0) {
             return 100;
         }
-        int penalty = Math.max(0, flaggedCategories) * PER_CATEGORY_PENALTY
-                + flaggedIngredients * PER_INGREDIENT_PENALTY;
+        int penalty = categories * PER_CATEGORY_PENALTY
+                + ingredients * PER_INGREDIENT_PENALTY;
         return Math.max(MIN_SCORE, 100 - penalty);
     }
 }
