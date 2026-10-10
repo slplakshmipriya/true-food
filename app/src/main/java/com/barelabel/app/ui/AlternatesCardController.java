@@ -716,7 +716,7 @@ public class AlternatesCardController {
      * remainder collapses into a "+N" chip.
      */
     private void bindRetailerStrip(android.widget.LinearLayout strip,
-            java.util.List<com.barelabel.app.pricing.PriceFetcher.Offer> offers) {
+            java.util.List<com.barelabel.app.pricing.UpcOffers.Offer> offers) {
         Context ctx = activity;
         strip.removeAllViews();
         if (offers == null || offers.isEmpty()) {
@@ -726,7 +726,7 @@ public class AlternatesCardController {
         strip.setVisibility(View.VISIBLE);
         int shown = Math.min(offers.size(), MAX_RETAILER_LOGOS);
         for (int i = 0; i < shown; i++) {
-            final com.barelabel.app.pricing.PriceFetcher.Offer offer = offers.get(i);
+            final com.barelabel.app.pricing.UpcOffers.Offer offer = offers.get(i);
             android.widget.ImageView logo = new android.widget.ImageView(ctx);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(26), dp(26));
             lp.setMarginEnd(dp(6));
