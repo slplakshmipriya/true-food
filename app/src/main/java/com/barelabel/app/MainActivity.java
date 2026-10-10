@@ -82,6 +82,7 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar progress;
     private TextView statusText, verdictText, flaggedText, ingredientsText;
     private LinearLayout resultCard;
+    private com.barelabel.app.ui.CleanScoreView cleanScoreView;
 
     // Separate Panels & Expandable Ingredients
     private View ingredientsCard;
@@ -339,6 +340,7 @@ setupCategoryFilterPanel();
         flaggedText = findViewById(R.id.flaggedText);
         ingredientsText = findViewById(R.id.ingredientsText);
         resultCard = findViewById(R.id.resultCard);
+        cleanScoreView = findViewById(R.id.cleanScoreView);
 
         productTitleText = findViewById(R.id.productTitleText);
         productImageView = findViewById(R.id.productImageView);
@@ -563,6 +565,10 @@ setupCategoryFilterPanel();
     }
 
     resultCard.setVisibility(View.VISIBLE);
+    // Verdict reveal: quick fade + rise so the verdict lands as a moment.
+    resultCard.setAlpha(0f);
+    resultCard.setTranslationY(dp(12));
+    resultCard.animate().alpha(1f).translationY(0f).setDuration(250).start();
 
     int colorClean = C_GREEN_800;
     int colorDirty = C_RED_800;
@@ -589,6 +595,9 @@ setupCategoryFilterPanel();
 
     // Handle case where product was not found
     if (result == null || !result.found) {
+        if (cleanScoreView != null) {
+            cleanScoreView.setScore(CleanScoreCalculator.UNAVAILABLE);
+        }
         if (matchNoticeText != null) matchNoticeText.setVisibility(View.GONE);
         if (productTitleText != null) productTitleText.setText("No Matching Product");
         if (productImageView != null) productImageView.setVisibility(View.GONE);
@@ -658,6 +667,9 @@ setupCategoryFilterPanel();
 
     // Handle missing/empty ingredients
     if (TextUtils.isEmpty(result.ingredients.trim())) {
+        if (cleanScoreView != null) {
+            cleanScoreView.setScore(CleanScoreCalculator.UNAVAILABLE);
+        }
         resultCard.setBackgroundResource(R.drawable.verdict_dirty);
         verdictText.setText("? INGREDIENTS UNAVAILABLE");
         verdictText.setTextColor(colorMuted);
@@ -670,6 +682,16 @@ setupCategoryFilterPanel();
     }
 
     boolean isClean = result.flagged == null || result.flagged.isEmpty();
+
+    // Clean Score next to the binary verdict (degrees for comparisons).
+    if (cleanScoreView != null) {
+        int flaggedCount = result.flagged == null ? 0 : result.flagged.size();
+        int categoryCount = (result.matchResult != null
+                && result.matchResult.categoryMap != null)
+                ? result.matchResult.categoryMap.size() : 0;
+        cleanScoreView.setScore(CleanScoreCalculator.score(
+                true, flaggedCount, categoryCount));
+    }
 
     // Persist this scan to history (deduplicated, newest-first). Disk I/O off the UI thread.
     final ProductResult scannedResult = result;

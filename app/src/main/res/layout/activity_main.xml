@@ -262,13 +262,20 @@
                     android:textColor="#111827"
                     android:textSize="20sp"
                     android:textStyle="bold" />
+
+                <com.barelabel.app.ui.CleanScoreView
+                    android:id="@+id/cleanScoreView"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:layout_marginStart="12dp"
+                    android:contentDescription="Clean Score" />
             </LinearLayout>
 
             <TextView
                 android:id="@+id/verdictText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textSize="22sp"
+                android:textSize="30sp"
                 android:textStyle="bold" />
 
             <com.google.android.flexbox.FlexboxLayout
