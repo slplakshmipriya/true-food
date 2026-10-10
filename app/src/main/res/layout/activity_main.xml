@@ -535,11 +535,12 @@
                     android:scrollbarThumbVertical="@drawable/scrollbar_thumb_vertical"
                     android:scrollbarTrackVertical="@drawable/scrollbar_track_vertical">
 
-                    <LinearLayout
+                    <com.google.android.flexbox.FlexboxLayout
                         android:id="@+id/exactMatchesList"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical" />
+                        app:flexWrap="wrap"
+                        app:justifyContent="flex_start" />
                 </androidx.core.widget.NestedScrollView>
             </LinearLayout>
 
@@ -594,11 +595,12 @@
                     android:scrollbarThumbVertical="@drawable/scrollbar_thumb_vertical"
                     android:scrollbarTrackVertical="@drawable/scrollbar_track_vertical">
 
-                    <LinearLayout
+                    <com.google.android.flexbox.FlexboxLayout
                         android:id="@+id/moreOptionsList"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical" />
+                        app:flexWrap="wrap"
+                        app:justifyContent="flex_start" />
                 </androidx.core.widget.NestedScrollView>
             </LinearLayout>
 

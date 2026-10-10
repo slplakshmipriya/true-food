@@ -81,10 +81,10 @@ public class AlternatesCardController {
     private final TextView text;
     private final View exactPanel;
     private final TextView exactTitle;
-    private final LinearLayout exactList;
+    private final com.google.android.flexbox.FlexboxLayout exactList;
     private final View morePanel;
     private final TextView moreTitle;
-    private final LinearLayout moreList;
+    private final com.google.android.flexbox.FlexboxLayout moreList;
     private final View organicRow;
     private final SwitchCompat organicSwitch;
     private final TextView organicStateText;
@@ -92,6 +92,8 @@ public class AlternatesCardController {
     private final BuyListener buyListener;
 
     private boolean preferOrganic = false;
+    /** True while a category search is shown: stacks render as a 2-column grid. */
+    private boolean gridMode = false;
     private boolean updatingSwitch = false;
     private List<ProductResult> pool = new ArrayList<>();
     private List<ProductResult> exactPool = new ArrayList<>();
@@ -358,6 +360,7 @@ public class AlternatesCardController {
         // Stash the context so the prefer-organic switch can re-rank without a new search.
         currentFoodType = foodType;
         currentCategoryIntent = categoryIntent;
+        gridMode = categoryIntent;
         currentAlternatesClean = isClean;
         currentFlaggedCategories = flaggedCategories != null ? flaggedCategories : new LinkedHashSet<>();
         currentActiveFilterCount = activeFilterCount;
@@ -595,7 +598,8 @@ public class AlternatesCardController {
     /** How many rows at the top of the Exact matches stack get a live price. */
     private static final int PRICE_ROW_COUNT = 3;
 
-    private void bindStack(View panel, TextView panelTitle, LinearLayout list,
+    private void bindStack(View panel, TextView panelTitle,
+                           com.google.android.flexbox.FlexboxLayout list,
                            String heading, List<AlternateRanker.RankedProduct> ranked,
                            boolean fetchPrices) {
         if (panel == null) return;
@@ -609,15 +613,20 @@ public class AlternatesCardController {
         }
         if (list != null) {
             list.removeAllViews();
+            // Row views are tracked directly: in grid mode there are no
+            // divider children, so child indexes no longer map to rows.
+            List<View> rowViews = new ArrayList<>();
             for (int i = 0; i < ranked.size(); i++) {
-                list.addView(buildRowView(ranked.get(i)));
-                if (i < ranked.size() - 1) {
+                View rowView = buildRowView(ranked.get(i));
+                applyStackItemParams(rowView);
+                list.addView(rowView);
+                rowViews.add(rowView);
+                if (!gridMode && i < ranked.size() - 1) {
                     list.addView(buildDivider());
                 }
             }
             // Prototype pricing: fetch live prices for the first few rows of the
-            // Exact matches stack only. Rows and dividers interleave, so row i
-            // lives at child index i*2.
+            // Exact matches stack only.
             if (fetchPrices) {
                 int n = Math.min(PRICE_ROW_COUNT, ranked.size());
                 for (int i = 0; i < n; i++) {
@@ -625,7 +634,7 @@ public class AlternatesCardController {
                     if (rp == null || rp.product == null) continue;
                     final String gtin = rp.product.gtinUpc == null ? "" : rp.product.gtinUpc;
                     final String tag = "price:" + gtin;
-                    View rowView = list.getChildAt(i * 2);
+                    View rowView = rowViews.get(i);
                     final TextView priceView = rowView instanceof ViewGroup
                             ? (TextView) ((ViewGroup) rowView).findViewWithTag(tag)
                             : null;
@@ -648,10 +657,31 @@ public class AlternatesCardController {
         }
     }
 
+    /**
+     * Row width inside a stack: in grid mode (category browsing) each row
+     * takes ~half the panel width (2 columns); otherwise the classic
+     * full-width list row.
+     */
+    private void applyStackItemParams(View rowView) {
+        com.google.android.flexbox.FlexboxLayout.LayoutParams lp =
+                new com.google.android.flexbox.FlexboxLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.flexBasisPercent = gridMode ? 0.48f : 1.0f;
+        lp.flexGrow = gridMode ? 1f : 0f;
+        if (gridMode) {
+            lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+        }
+        rowView.setLayoutParams(lp);
+    }
+
     private View buildDivider() {
         View divider = new View(activity);
-        divider.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
+        com.google.android.flexbox.FlexboxLayout.LayoutParams lp =
+                new com.google.android.flexbox.FlexboxLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
+        lp.flexBasisPercent = 1.0f;
+        divider.setLayoutParams(lp);
         divider.setBackgroundColor(C_GRAY_200);
         return divider;
     }
