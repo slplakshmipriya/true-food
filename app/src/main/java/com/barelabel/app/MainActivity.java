@@ -4,11 +4,8 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
-import android.text.SpannableStringBuilder;
-import android.text.Spanned;
 import android.text.TextUtils;
-import android.text.style.ForegroundColorSpan;
-import android.text.style.StyleSpan;
+import android.view.Gravity;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
@@ -83,6 +80,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView statusText, verdictText, flaggedText, ingredientsText;
     private LinearLayout resultCard;
     private com.barelabel.app.ui.CleanScoreView cleanScoreView;
+    private LinearLayout flaggedList;
 
     // Separate Panels & Expandable Ingredients
     private View ingredientsCard;
@@ -341,6 +339,7 @@ setupCategoryFilterPanel();
         ingredientsText = findViewById(R.id.ingredientsText);
         resultCard = findViewById(R.id.resultCard);
         cleanScoreView = findViewById(R.id.cleanScoreView);
+        flaggedList = findViewById(R.id.flaggedList);
 
         productTitleText = findViewById(R.id.productTitleText);
         productImageView = findViewById(R.id.productImageView);
@@ -569,6 +568,7 @@ setupCategoryFilterPanel();
     resultCard.setAlpha(0f);
     resultCard.setTranslationY(dp(12));
     resultCard.animate().alpha(1f).translationY(0f).setDuration(250).start();
+    bindFlaggedList(null);
 
     int colorClean = C_GREEN_800;
     int colorDirty = C_RED_800;
@@ -724,41 +724,16 @@ setupCategoryFilterPanel();
         verdictText.setTextColor(colorClean);
         if (flaggedTitle != null) flaggedTitle.setVisibility(View.GONE);
         if (flaggedText != null) flaggedText.setVisibility(View.GONE);
+        bindFlaggedList(null);
     } else {
         resultCard.setBackgroundResource(R.drawable.verdict_dirty);
         verdictText.setText("⚠ DIRTY INGREDIENTS");
         verdictText.setTextColor(colorDirty);
         if (flaggedTitle != null) flaggedTitle.setVisibility(View.VISIBLE);
-        if (flaggedText != null) flaggedText.setVisibility(View.VISIBLE);
+        if (flaggedText != null) flaggedText.setVisibility(View.GONE);
 
-        // Styled Category Grouping Output
-        if (result.matchResult != null && result.matchResult.hasMatches()) {
-            SpannableStringBuilder builder = new SpannableStringBuilder();
-
-            for (java.util.Map.Entry<String, List<String>> entry : result.matchResult.categoryMap.entrySet()) {
-                int startCategory = builder.length();
-
-                builder.append("► ").append(entry.getKey().toUpperCase(Locale.US)).append("\n");
-                int endCategory = builder.length();
-
-                builder.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
-                        startCategory, endCategory, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                builder.setSpan(new android.text.style.ForegroundColorSpan(C_RED_900),
-                        startCategory, endCategory, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-
-                for (String matchedIngredient : entry.getValue()) {
-                    builder.append("   • ").append(matchedIngredient).append("\n");
-                }
-                builder.append("\n");
-            }
-            flaggedText.setText(builder.toString().trim());
-        } else {
-            StringBuilder b = new StringBuilder();
-            for (String f : result.flagged) {
-                b.append("• ").append(f).append("\n");
-            }
-            flaggedText.setText(b.toString().trim());
-        }
+        // Expandable per-ingredient rows with plain-English reasons.
+        bindFlaggedList(result);
     }
 
     // 3. Verdict chips: per-category pass/fail so the verdict shows its work.
@@ -856,6 +831,79 @@ private void updateAffiliateDisclosure(ProductResult result,
             && com.barelabel.app.affiliate.AffiliateNavigator
                     .hasAffiliateLinks(this, result, off);
     disclosureView.setVisibility(hasAffiliate ? View.VISIBLE : View.GONE);
+}
+
+/**
+ * One expandable row per flagged ingredient: tap to reveal the plain-English
+ * reason for its category. Replaces the old static grouped text dump.
+ */
+private void bindFlaggedList(ProductResult result) {
+    if (flaggedList == null) return;
+    flaggedList.removeAllViews();
+    if (result == null || result.matchResult == null
+            || !result.matchResult.hasMatches()) {
+        flaggedList.setVisibility(View.GONE);
+        return;
+    }
+    boolean any = false;
+    for (Map.Entry<String, List<String>> entry : result.matchResult.categoryMap.entrySet()) {
+        String category = entry.getKey();
+        for (String ingredient : entry.getValue()) {
+            flaggedList.addView(buildFlaggedRow(ingredient, category));
+            any = true;
+        }
+    }
+    flaggedList.setVisibility(any ? View.VISIBLE : View.GONE);
+}
+
+/** A single tappable flagged-ingredient row with a collapsible reason. */
+private View buildFlaggedRow(final String ingredient, final String category) {
+    LinearLayout row = new LinearLayout(this);
+    row.setOrientation(LinearLayout.VERTICAL);
+    row.setPadding(dp(12), dp(8), dp(12), dp(8));
+    row.setBackgroundResource(R.drawable.bg_search_box);
+    LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+    rowParams.topMargin = dp(6);
+    row.setLayoutParams(rowParams);
+    row.setClickable(true);
+    row.setFocusable(true);
+
+    LinearLayout header = new LinearLayout(this);
+    header.setOrientation(LinearLayout.HORIZONTAL);
+    header.setGravity(Gravity.CENTER_VERTICAL);
+
+    TextView name = new TextView(this);
+    name.setLayoutParams(new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+    name.setText("⚠ " + ingredient);
+    name.setTextSize(14f);
+    name.setTypeface(name.getTypeface(), Typeface.BOLD);
+    name.setTextColor(C_RED_900);
+    header.addView(name);
+
+    final TextView chevron = new TextView(this);
+    chevron.setText("›");
+    chevron.setTextSize(18f);
+    chevron.setTextColor(C_GRAY_600);
+    header.addView(chevron);
+    row.addView(header);
+
+    final TextView reason = new TextView(this);
+    reason.setText(IngredientExplainer.reasonFor(category)
+            + "\nFlagged under: " + category);
+    reason.setTextSize(13f);
+    reason.setTextColor(C_GRAY_600);
+    reason.setPadding(0, dp(4), 0, 0);
+    reason.setVisibility(View.GONE);
+    row.addView(reason);
+
+    row.setOnClickListener(v -> {
+        boolean expand = reason.getVisibility() != View.VISIBLE;
+        reason.setVisibility(expand ? View.VISIBLE : View.GONE);
+        chevron.setText(expand ? "⌄" : "›");
+    });
+    return row;
 }
 
 /**

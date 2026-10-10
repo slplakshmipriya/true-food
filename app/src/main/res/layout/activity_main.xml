@@ -302,7 +302,16 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:textColor="#7F1D1D"
-                android:textSize="14sp" />
+                android:textSize="14sp"
+                android:visibility="gone" />
+
+            <!-- Expandable per-ingredient rows (tap for why it matters) -->
+            <LinearLayout
+                android:id="@+id/flaggedList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone" />
 
             <Button
                 android:id="@+id/walmartButton"
