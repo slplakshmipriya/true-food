@@ -761,6 +761,18 @@ public class AlternatesCardController {
         metaView.setPadding(0, dp(4), 0, 0);
         row.addView(metaView);
 
+        // Why-this-one line: names the alt's real clean-highlight ingredients
+        // (from its own label), so the pick explains itself at a glance.
+        String whyText = buildWhyLine(alt);
+        if (!whyText.isEmpty()) {
+            TextView whyView = new TextView(ctx);
+            whyView.setText(whyText);
+            whyView.setTextSize(12f);
+            whyView.setTextColor(C_EMERALD_700);
+            whyView.setPadding(0, dp(2), 0, 0);
+            row.addView(whyView);
+        }
+
         // Live price slot for the prototype pricing fetch (Exact matches stack
         // only): hidden until a price resolves; tagged by GTIN so bindStack can
         // find and update it, and stale callbacks can bail out.
