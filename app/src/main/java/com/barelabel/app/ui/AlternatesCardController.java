@@ -667,8 +667,8 @@ public class AlternatesCardController {
                 new com.google.android.flexbox.FlexboxLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.flexBasisPercent = gridMode ? 0.48f : 1.0f;
-        lp.flexGrow = gridMode ? 1f : 0f;
+        lp.setFlexBasisPercent(gridMode ? 0.48f : 1.0f);
+        lp.setFlexGrow(gridMode ? 1f : 0f);
         if (gridMode) {
             lp.setMargins(dp(3), dp(3), dp(3), dp(3));
         }
@@ -680,7 +680,7 @@ public class AlternatesCardController {
         com.google.android.flexbox.FlexboxLayout.LayoutParams lp =
                 new com.google.android.flexbox.FlexboxLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
-        lp.flexBasisPercent = 1.0f;
+        lp.setFlexBasisPercent(1.0f);
         divider.setLayoutParams(lp);
         divider.setBackgroundColor(C_GRAY_200);
         return divider;
