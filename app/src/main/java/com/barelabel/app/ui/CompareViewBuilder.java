@@ -228,7 +228,7 @@ public final class CompareViewBuilder {
         return col;
     }
 
-    /** Buy + Save text buttons under a product column. */
+    /** Buy + Save icon buttons under a product column. */
     private static LinearLayout actionRow(Context context, ScannedProduct p,
                                           java.util.Set<String> savedKeys,
                                           CompareActionListener listener) {
@@ -240,33 +240,37 @@ public final class CompareViewBuilder {
         rowParams.topMargin = dp(context, 8);
         row.setLayoutParams(rowParams);
 
-        TextView buy = new TextView(context);
-        buy.setText("Buy");
-        buy.setTextSize(14f);
-        buy.setTypeface(null, Typeface.BOLD);
-        buy.setTextColor(C_BLUE_600);
-        buy.setPadding(dp(context, 12), dp(context, 6), dp(context, 12), dp(context, 6));
+        android.widget.ImageView buy = new android.widget.ImageView(context);
+        buy.setImageResource(R.drawable.ic_cart_search_blue);
+        buy.setContentDescription("Buy");
+        int touch = dp(context, 40);
+        LinearLayout.LayoutParams buyParams = new LinearLayout.LayoutParams(touch, touch);
+        buyParams.rightMargin = dp(context, 4);
+        buy.setLayoutParams(buyParams);
+        buy.setPadding(dp(context, 8), dp(context, 8), dp(context, 8), dp(context, 8));
         buy.setClickable(true);
         buy.setFocusable(true);
         buy.setOnClickListener(v -> listener.onBuy(p));
         row.addView(buy);
 
-        TextView save = new TextView(context);
         boolean alreadySaved = savedKeys != null && savedKeys.contains(productKey(p));
-        save.setText(alreadySaved ? "Saved \u2713" : "Save");
-        save.setTextSize(14f);
-        save.setTypeface(null, Typeface.BOLD);
-        save.setTextColor(alreadySaved ? C_GRAY_400 : C_GRAY_700);
-        save.setPadding(dp(context, 12), dp(context, 6), dp(context, 12), dp(context, 6));
+        android.widget.ImageView save = new android.widget.ImageView(context);
+        save.setImageResource(alreadySaved
+                ? R.drawable.ic_heart_filled : R.drawable.ic_heart_outline);
+        save.setContentDescription(alreadySaved ? "Saved" : "Save");
+        save.setLayoutParams(new LinearLayout.LayoutParams(touch, touch));
+        save.setPadding(dp(context, 8), dp(context, 8), dp(context, 8), dp(context, 8));
         save.setEnabled(!alreadySaved);
-        save.setClickable(!alreadySaved);
-        save.setFocusable(!alreadySaved);
+        save.setAlpha(alreadySaved ? 0.4f : 1f);
         if (!alreadySaved) {
+            save.setClickable(true);
+            save.setFocusable(true);
             save.setOnClickListener(v -> {
                 if (listener.onSave(p)) {
-                    save.setText("Saved \u2713");
-                    save.setTextColor(C_GRAY_400);
+                    save.setImageResource(R.drawable.ic_heart_filled);
+                    save.setContentDescription("Saved");
                     save.setEnabled(false);
+                    save.setAlpha(0.4f);
                 }
             });
         }

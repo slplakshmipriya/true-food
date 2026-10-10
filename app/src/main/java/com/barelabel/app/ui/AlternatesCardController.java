@@ -306,6 +306,24 @@ public class AlternatesCardController {
         return b;
     }
 
+    /** Icon action button: same pill styling as text buttons, 40dp touch target. */
+    private android.widget.ImageButton makeIconButton(Context ctx, int iconRes,
+                                                      int fillColor, int strokeColor,
+                                                      String contentDesc) {
+        android.widget.ImageButton b = new android.widget.ImageButton(ctx);
+        b.setImageResource(iconRes);
+        b.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
+        b.setContentDescription(contentDesc);
+        b.setBackground(pillBackground(fillColor, strokeColor));
+        b.setPadding(dp(8), dp(6), dp(8), dp(6));
+        b.setMinimumHeight(dp(40));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                dp(52), ViewGroup.LayoutParams.WRAP_CONTENT);
+        p.setMarginEnd(dp(8));
+        b.setLayoutParams(p);
+        return b;
+    }
+
     /** Compare toggle visuals: green filled when selected, outlined when not. */
     private void styleCompareButton(android.widget.Button b, boolean selected) {
         if (selected) {
@@ -1050,13 +1068,14 @@ public class AlternatesCardController {
                                     ? View.VISIBLE : View.GONE);
                 });
 
-        // Action row: real Buy / Save / Compare buttons below the meta line.
+        // Action row: Buy / Save icon buttons + Compare text button below the
+        // meta line.
         LinearLayout actionRow = new LinearLayout(ctx);
         actionRow.setOrientation(LinearLayout.HORIZONTAL);
         actionRow.setPadding(0, dp(10), 0, 0);
 
-        android.widget.Button buyButton = makeActionButton(ctx, "Buy",
-                C_BLUE_600, C_WHITE, 0);
+        android.widget.ImageButton buyButton = makeIconButton(ctx,
+                R.drawable.ic_cart_search, C_BLUE_600, 0, "Buy");
         buyButton.setOnClickListener(v -> {
             AnalyticsTracker.buyTapped("alternate");
             buyListener.onBuy(alt);
@@ -1064,16 +1083,15 @@ public class AlternatesCardController {
         actionRow.addView(buyButton);
 
         if (saveListener != null) {
-            android.widget.Button saveButton = makeActionButton(ctx, "Save",
-                    C_WHITE, C_BLUE_600,
-                    C_BLUE_600);
+            android.widget.ImageButton saveButton = makeIconButton(ctx,
+                    R.drawable.ic_heart_outline, C_WHITE, C_BLUE_600, "Save");
             saveButton.setOnClickListener(v -> {
                 if (saveListener.onSaveProduct(alt)) {
-                    saveButton.setText("Saved \u2713");
+                    saveButton.setImageResource(R.drawable.ic_heart_filled);
+                    saveButton.setContentDescription("Saved");
                     saveButton.setEnabled(false);
                     saveButton.setBackground(
                             pillBackground(C_GRAY_100, 0));
-                    saveButton.setTextColor(C_GRAY_400);
                 }
             });
             actionRow.addView(saveButton);
