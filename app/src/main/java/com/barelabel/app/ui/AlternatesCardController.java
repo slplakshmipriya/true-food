@@ -402,9 +402,7 @@ public class AlternatesCardController {
         lastMoreCount = moreRanked.size();
 
         if (card != null && title != null && text != null) {
-            currentHeading = (categoryIntent && !TextUtils.isEmpty(foodType))
-                    ? "Clean choices in " + foodType
-                    : "Clean Alternates";
+            currentHeading = "Search results with clean ingredients";
             if (!exactRanked.isEmpty() || !moreRanked.isEmpty()) {
                 card.setVisibility(View.VISIBLE);
                 title.setText(currentHeading);
@@ -413,10 +411,13 @@ public class AlternatesCardController {
                     clearFiltersButton.setVisibility(View.GONE);
                 }
 
+                String moreHeading = TextUtils.isEmpty(foodType)
+                        ? "Clean options"
+                        : "Clean options in " + foodType;
                 bindStack(exactPanel, exactTitle, exactList, "Exact matches",
-                        exactRanked, true);
-                bindStack(morePanel, moreTitle, moreList, "More clean options",
-                        moreRanked, true);
+                        exactRanked, exactRanked.size());
+                bindStack(morePanel, moreTitle, moreList, moreHeading,
+                        moreRanked, OFFERS_ROW_COUNT);
 
                 if (!isRerank) {
                     AnalyticsTracker.alternatesViewed(
@@ -632,7 +633,7 @@ public class AlternatesCardController {
     private void bindStack(View panel, TextView panelTitle,
                            com.google.android.flexbox.FlexboxLayout list,
                            String heading, List<AlternateRanker.RankedProduct> ranked,
-                           boolean fetchPrices) {
+                           int offersRowCount) {
         if (panel == null) return;
         if (ranked.isEmpty()) {
             panel.setVisibility(View.GONE);
@@ -656,11 +657,14 @@ public class AlternatesCardController {
                     list.addView(buildDivider());
                 }
             }
-            // Prototype pricing: for the first few rows of each stack, fetch
-            // every retailer's offer for the item — cheapest price in the
-            // price slot, one logo chip per store in the strip.
-            if (fetchPrices) {
-                int n = Math.min(OFFERS_ROW_COUNT, ranked.size());
+            // Prototype pricing: every Exact-matches row and the first few
+            // Clean-options rows fetch every retailer's offer for the item —
+            // cheapest price in the price slot, one logo chip per store in
+            // the strip. One UPCitemdb lookup per GTIN (cached); the trial
+            // quota is 100/day per device IP, so the Clean-options stack
+            // stays capped.
+            if (offersRowCount > 0) {
+                int n = Math.min(offersRowCount, ranked.size());
                 for (int i = 0; i < n; i++) {
                     AlternateRanker.RankedProduct rp = ranked.get(i);
                     if (rp == null || rp.product == null) continue;
