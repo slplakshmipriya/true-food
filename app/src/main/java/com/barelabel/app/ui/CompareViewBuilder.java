@@ -75,6 +75,9 @@ public final class CompareViewBuilder {
         container.removeAllViews();
         if (a == null || b == null) return;
 
+        // Delta banner: the one-line takeaway before the detail table.
+        container.addView(deltaBanner(context, a, b));
+
         // Product header columns
         LinearLayout headerRow = new LinearLayout(context);
         headerRow.setOrientation(LinearLayout.HORIZONTAL);
