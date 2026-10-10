@@ -398,7 +398,7 @@ public class AlternatesCardController {
                 bindStack(exactPanel, exactTitle, exactList, "Exact matches",
                         exactRanked, true);
                 bindStack(morePanel, moreTitle, moreList, "More clean options",
-                        moreRanked, false);
+                        moreRanked, true);
 
                 if (!isRerank) {
                     AnalyticsTracker.alternatesViewed(
@@ -638,9 +638,9 @@ public class AlternatesCardController {
                     list.addView(buildDivider());
                 }
             }
-            // Prototype pricing: for the first few rows of the Exact matches
-            // stack, fetch every retailer's offer for the item — cheapest
-            // price in the price slot, one logo chip per store in the strip.
+            // Prototype pricing: for the first few rows of each stack, fetch
+            // every retailer's offer for the item — cheapest price in the
+            // price slot, one logo chip per store in the strip.
             if (fetchPrices) {
                 int n = Math.min(OFFERS_ROW_COUNT, ranked.size());
                 for (int i = 0; i < n; i++) {
@@ -897,9 +897,9 @@ public class AlternatesCardController {
             row.addView(whyView);
         }
 
-        // Live price slot for the prototype pricing fetch (Exact matches stack
-        // only): hidden until a price resolves; tagged by GTIN so bindStack can
-        // find and update it, and stale callbacks can bail out.
+        // Live price slot for the prototype pricing fetch: hidden until a
+        // price resolves; tagged by GTIN so bindStack can find and update
+        // it, and stale callbacks can bail out.
         TextView priceView = new TextView(ctx);
         priceView.setTag("price:" + (alt.gtinUpc == null ? "" : alt.gtinUpc));
         priceView.setTextSize(13f);
