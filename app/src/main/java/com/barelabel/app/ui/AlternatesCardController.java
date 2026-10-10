@@ -132,6 +132,13 @@ public class AlternatesCardController {
     }
 
     private SaveListener saveListener;
+
+    /** Host opens this alternate as the next search (its verdict card). */
+    public interface AlternateSearchListener {
+        void onOpenAlternate(ProductResult product);
+    }
+
+    private AlternateSearchListener alternateSearchListener;
     private Runnable onClearFilters;
 
     /** Host unchecks one filter category and re-searches (smart relief). */
@@ -244,6 +251,10 @@ public class AlternatesCardController {
 
     public void setSaveListener(SaveListener listener) {
         this.saveListener = listener;
+    }
+
+    public void setAlternateSearchListener(AlternateSearchListener listener) {
+        this.alternateSearchListener = listener;
     }
 
     /** Re-style every compare button from the host's pick set (call after any toggle). */
@@ -595,8 +606,10 @@ public class AlternatesCardController {
         if (morePanel != null) morePanel.setVisibility(View.GONE);
     }
 
-    /** How many rows at the top of the Exact matches stack get a live price. */
-    private static final int PRICE_ROW_COUNT = 3;
+    /** How many rows at the top of the Exact matches stack get price/offers. */
+    private static final int OFFERS_ROW_COUNT = 5;
+    /** Max retailer logos shown per row; the rest collapse into "+N". */
+    private static final int MAX_RETAILER_LOGOS = 6;
 
     private void bindStack(View panel, TextView panelTitle,
                            com.google.android.flexbox.FlexboxLayout list,
@@ -625,32 +638,42 @@ public class AlternatesCardController {
                     list.addView(buildDivider());
                 }
             }
-            // Prototype pricing: fetch live prices for the first few rows of the
-            // Exact matches stack only.
+            // Prototype pricing: for the first few rows of the Exact matches
+            // stack, fetch every retailer's offer for the item — cheapest
+            // price in the price slot, one logo chip per store in the strip.
             if (fetchPrices) {
-                int n = Math.min(PRICE_ROW_COUNT, ranked.size());
+                int n = Math.min(OFFERS_ROW_COUNT, ranked.size());
                 for (int i = 0; i < n; i++) {
                     AlternateRanker.RankedProduct rp = ranked.get(i);
                     if (rp == null || rp.product == null) continue;
                     final String gtin = rp.product.gtinUpc == null ? "" : rp.product.gtinUpc;
                     final String tag = "price:" + gtin;
+                    final String stripTag = "offers:" + gtin;
                     View rowView = rowViews.get(i);
-                    final TextView priceView = rowView instanceof ViewGroup
-                            ? (TextView) ((ViewGroup) rowView).findViewWithTag(tag)
-                            : null;
-                    if (priceView == null) continue;
-                    // WeakReference: a slow price fetch must not retain the
+                    if (!(rowView instanceof ViewGroup)) continue;
+                    final TextView priceView = (TextView) ((ViewGroup) rowView).findViewWithTag(tag);
+                    final android.widget.LinearLayout strip = (android.widget.LinearLayout)
+                            ((ViewGroup) rowView).findViewWithTag(stripTag);
+                    if (priceView == null && strip == null) continue;
+                    // WeakReferences: a slow offers fetch must not retain the
                     // whole row hierarchy if the panel was torn down meanwhile.
                     final java.lang.ref.WeakReference<TextView> priceRef =
                             new java.lang.ref.WeakReference<>(priceView);
-                    PriceFetcher.fetch(gtin, result -> {
+                    final java.lang.ref.WeakReference<android.widget.LinearLayout> stripRef =
+                            new java.lang.ref.WeakReference<>(strip);
+                    com.barelabel.app.pricing.PriceFetcher.fetchOffers(gtin, offers -> {
+                        if (offers == null || offers.isEmpty()) return;
                         TextView pv = priceRef.get();
-                        if (pv == null) return;
                         // Row may have been rebound for a different product since.
-                        if (!TextUtils.equals(String.valueOf(pv.getTag()), tag)) return;
-                        if (result == null) return;
-                        pv.setText(result.displayText());
-                        pv.setVisibility(View.VISIBLE);
+                        if (pv != null && TextUtils.equals(String.valueOf(pv.getTag()), tag)) {
+                            pv.setText(offers.get(0).priceText());
+                            pv.setVisibility(View.VISIBLE);
+                        }
+                        android.widget.LinearLayout stripView = stripRef.get();
+                        if (stripView != null
+                                && TextUtils.equals(String.valueOf(stripView.getTag()), stripTag)) {
+                            bindRetailerStrip(stripView, offers);
+                        }
                     });
                 }
             }
@@ -684,6 +707,69 @@ public class AlternatesCardController {
         divider.setLayoutParams(lp);
         divider.setBackgroundColor(C_GRAY_200);
         return divider;
+    }
+
+    /**
+     * Fills the retailer strip: one logo chip per store carrying the item
+     * (cheapest first, logos only) — tapping a chip opens that store's
+     * product page. Capped so the strip never overflows the card; the
+     * remainder collapses into a "+N" chip.
+     */
+    private void bindRetailerStrip(android.widget.LinearLayout strip,
+            java.util.List<com.barelabel.app.pricing.PriceFetcher.Offer> offers) {
+        Context ctx = activity;
+        strip.removeAllViews();
+        if (offers == null || offers.isEmpty()) {
+            strip.setVisibility(View.GONE);
+            return;
+        }
+        strip.setVisibility(View.VISIBLE);
+        int shown = Math.min(offers.size(), MAX_RETAILER_LOGOS);
+        for (int i = 0; i < shown; i++) {
+            final com.barelabel.app.pricing.PriceFetcher.Offer offer = offers.get(i);
+            android.widget.ImageView logo = new android.widget.ImageView(ctx);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(26), dp(26));
+            lp.setMarginEnd(dp(6));
+            logo.setLayoutParams(lp);
+            logo.setPadding(dp(3), dp(3), dp(3), dp(3));
+            android.graphics.drawable.GradientDrawable chipBg =
+                    new android.graphics.drawable.GradientDrawable();
+            chipBg.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
+            chipBg.setCornerRadius(dp(6));
+            chipBg.setColor(C_WHITE);
+            logo.setBackground(chipBg);
+            logo.setContentDescription(offer.merchant);
+            RetailerLogos.loadInto(ctx, logo, offer.merchant, offer.domain);
+            if (!offer.link.isEmpty() && offer.link.startsWith("https://")) {
+                logo.setClickable(true);
+                logo.setOnClickListener(v -> openOfferLink(offer.link));
+            }
+            strip.addView(logo);
+        }
+        if (offers.size() > shown) {
+            TextView more = new TextView(ctx);
+            more.setText("+" + (offers.size() - shown));
+            more.setTextSize(10f);
+            more.setTextColor(C_GRAY_500);
+            strip.addView(more);
+        }
+    }
+
+    /** Opens a retailer's product page in a Custom Tab (URL bar visible). */
+    private void openOfferLink(String url) {
+        try {
+            new androidx.browser.customtabs.CustomTabsIntent.Builder()
+                    .setShowTitle(true)
+                    .build()
+                    .launchUrl(activity, android.net.Uri.parse(url));
+        } catch (Exception e) {
+            try {
+                activity.startActivity(new android.content.Intent(
+                        android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)));
+            } catch (Exception ignored) {
+                // No browser available: the logo stays a passive indicator.
+            }
+        }
     }
 
     /**
@@ -729,16 +815,24 @@ public class AlternatesCardController {
         headerRow.addView(titleView);
 
         // Product thumbnail: conditional slot, only visible when OFF has an image.
-        // Fixed 56dp so rows never shift; GONE (text-only row) until resolved.
+        // GONE (text-only row, no reserved space) until resolved.
         android.widget.ImageView thumbView = new android.widget.ImageView(ctx);
-        int thumbSize = dp(56);
-        LinearLayout.LayoutParams thumbParams = new LinearLayout.LayoutParams(
-                thumbSize, thumbSize);
-        thumbParams.setMarginEnd(dp(10));
-        thumbView.setLayoutParams(thumbParams);
         thumbView.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
         thumbView.setVisibility(View.GONE);
-        headerRow.addView(thumbView, 0);
+        if (gridMode) {
+            // Grid card: the image takes a full-width banner above the title —
+            // real room to see it, and the title keeps the column's full width.
+            thumbView.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(110)));
+            row.addView(thumbView);
+        } else {
+            // List row: fixed 56dp thumb beside the title.
+            LinearLayout.LayoutParams thumbParams = new LinearLayout.LayoutParams(
+                    dp(56), dp(56));
+            thumbParams.setMarginEnd(dp(10));
+            thumbView.setLayoutParams(thumbParams);
+            headerRow.addView(thumbView, 0);
+        }
         String thumbGtin = alt.gtinUpc;
         thumbView.setTag(thumbGtin);
 
@@ -814,6 +908,17 @@ public class AlternatesCardController {
         priceView.setPadding(0, dp(2), 0, 0);
         priceView.setVisibility(View.GONE);
         row.addView(priceView);
+
+        // Retailer strip: one logo chip per store carrying this item
+        // (UPCitemdb offers), populated by bindStack's offers fetch; GONE
+        // until offers land. Tag mirrors the price slot for staleness checks.
+        android.widget.LinearLayout retailerStrip = new android.widget.LinearLayout(ctx);
+        retailerStrip.setOrientation(LinearLayout.HORIZONTAL);
+        retailerStrip.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        retailerStrip.setTag("offers:" + (alt.gtinUpc == null ? "" : alt.gtinUpc));
+        retailerStrip.setPadding(0, dp(6), 0, 0);
+        retailerStrip.setVisibility(View.GONE);
+        row.addView(retailerStrip);
 
         // Open Food Facts enrichment: thumbnail, friendlier title, cleaner brand.
         // Single lookup; the resolver serves repeat calls from its memory cache.
@@ -938,7 +1043,10 @@ public class AlternatesCardController {
         chevron.setText(expanded ? "⌄" : "›");
         row.addView(expandBox);
 
-        row.setOnClickListener(v -> {
+        // Tapping the card opens this alternate as the next search (verdict
+        // card); the chevron alone expands the ingredient list in place.
+        // The row's buttons consume their own taps, as before.
+        final Runnable toggleExpand = () -> {
             boolean nowExpanded = expandBox.getVisibility() != View.VISIBLE;
             if (nowExpanded) {
                 expandedKeys.add(key);
@@ -948,6 +1056,17 @@ public class AlternatesCardController {
             }
             expandBox.setVisibility(nowExpanded ? View.VISIBLE : View.GONE);
             chevron.setText(nowExpanded ? "⌄" : "›");
+        };
+        chevron.setMinimumWidth(dp(40));
+        chevron.setMinimumHeight(dp(40));
+        chevron.setGravity(android.view.Gravity.CENTER);
+        chevron.setOnClickListener(v -> toggleExpand.run());
+        row.setOnClickListener(v -> {
+            if (alternateSearchListener != null) {
+                alternateSearchListener.onOpenAlternate(alt);
+            } else {
+                toggleExpand.run();
+            }
         });
 
         return row;

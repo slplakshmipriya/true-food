@@ -289,6 +289,24 @@ setupCategoryFilterPanel();
             return saved;
         });
     }
+    if (alternatesController != null) {
+        alternatesController.setAlternateSearchListener(alt -> {
+            if (alt == null) return;
+            // The tapped alternate becomes the next search candidate: exact
+            // GTIN lookup when we have one (same path as a barcode scan),
+            // name search otherwise; then scroll its verdict into view.
+            if (!TextUtils.isEmpty(alt.gtinUpc)) {
+                lookupBarcodeAndSearch(alt.gtinUpc.trim());
+            } else {
+                String q = alt.name == null ? "" : alt.name;
+                if (!TextUtils.isEmpty(alt.brand)) q = q + " (" + alt.brand + ")";
+                searchBox.setText(q);
+                search();
+            }
+            NestedScrollView rootScroll = findViewById(R.id.mainRootLayout);
+            if (rootScroll != null) rootScroll.smoothScrollTo(0, 0);
+        });
+    }
     // 5. Attach AutoComplete Manager
     // Unbranded completions (offline dictionary) take rank 1-2; USDA fills the rest.
     SuggestionProvider suggestionProvider = new CombinedSuggestionProvider(

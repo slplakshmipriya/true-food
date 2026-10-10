@@ -16,7 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -27,6 +26,11 @@ import java.util.concurrent.Executors;
  * <p>Current mode: queries the UPCitemdb keyless trial endpoint directly
  * (100 lookups/day per device IP, ~1 req/10s sustainable). Results are cached
  * in memory per GTIN so repeat views never burn quota.
+ *
+ * <p>Two reads over the same lookup: {@link #fetch} (cheapest in-stock offer,
+ * the prototype price line) and {@link #fetchOffers} (every retailer carrying
+ * the item, for the logo strip on alternate rows). One network call per GTIN
+ * feeds both.
  *
  * <p>When the Cloudflare Worker in {@code workers/pricing-proxy} is deployed,
  * flip {@link #USE_WORKER} and set {@link #WORKER_URL}: the worker holds the
@@ -49,9 +53,9 @@ public final class PriceFetcher {
 
     private static final ExecutorService EXEC = Executors.newFixedThreadPool(3);
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
-    private static final Map<String, PriceResult> CACHE = new ConcurrentHashMap<>();
-    private static final Set<String> MISS = ConcurrentHashMap.newKeySet();
-    private static final Map<String, List<PriceCallback>> IN_FLIGHT =
+    /** Confirmed offers per GTIN; an empty list is a confirmed "no offers". */
+    private static final Map<String, List<Offer>> OFFERS_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, List<OffersCallback>> OFFERS_IN_FLIGHT =
             new ConcurrentHashMap<>();
     /** Backoff after a 429: no new trial requests until this wall-clock time. */
     private static volatile long rateLimitedUntilMs = 0;
@@ -81,49 +85,93 @@ public final class PriceFetcher {
 
         /** e.g. "$11.38 · Walmart" or "$11.38" when no merchant is known. */
         public String displayText() {
-            String p = currencySymbol() + String.format(Locale.US, "%.2f", price);
+            String p = currencySymbol(currency) + String.format(Locale.US, "%.2f", price);
             return merchant.isEmpty() ? p : p + " · " + merchant;
         }
+    }
 
-        private String currencySymbol() {
-            try {
-                return java.util.Currency.getInstance(currency).getSymbol(Locale.US);
-            } catch (Exception e) {
-                return "USD".equals(currency) ? "$" : currency + " ";
-            }
+    /** Callback for {@link #fetchOffers}; always on the main thread. The list
+     *  is null when the lookup failed (unknown), empty when the item is
+     *  confirmed to have no usable offers. */
+    public interface OffersCallback {
+        void onOffers(List<Offer> offers);
+    }
+
+    /** One retailer's offer for an item (UPCitemdb {@code offers[]} entry). */
+    public static final class Offer {
+        public final String merchant;
+        public final String domain;
+        public final double price;
+        public final String currency;
+        public final String link;
+
+        Offer(String merchant, String domain, double price, String currency, String link) {
+            this.merchant = merchant == null ? "" : merchant;
+            this.domain = domain == null ? "" : domain;
+            this.price = price;
+            this.currency = (currency == null || currency.isEmpty()) ? "USD" : currency;
+            this.link = link == null ? "" : link;
+        }
+
+        /** "$11.38" — price only; the row shows the retailer's logo, not its name. */
+        public String priceText() {
+            return currencySymbol(currency) + String.format(Locale.US, "%.2f", price);
+        }
+    }
+
+    private static String currencySymbol(String currency) {
+        try {
+            return java.util.Currency.getInstance(currency).getSymbol(Locale.US);
+        } catch (Exception e) {
+            return "USD".equals(currency) ? "$" : currency + " ";
         }
     }
 
     private PriceFetcher() {
     }
 
-    /** Async price lookup by raw GTIN/UPC; callback fires on the main thread. */
+    /** Async cheapest-offer lookup; callback fires on the main thread. */
     public static void fetch(String gtinRaw, PriceCallback callback) {
+        fetchOffers(gtinRaw, offers -> {
+            if (offers == null || offers.isEmpty()) {
+                callback.onPrice(null);
+                return;
+            }
+            Offer best = offers.get(0);
+            callback.onPrice(new PriceResult(best.price, best.merchant, best.currency));
+        });
+    }
+
+    /**
+     * Async all-offers lookup by raw GTIN/UPC; callback fires on the main
+     * thread. The list is cheapest-first, one offer per retailer.
+     */
+    public static void fetchOffers(String gtinRaw, OffersCallback callback) {
         final String gtin = normalizeGtin(gtinRaw);
         if (gtin.isEmpty()) {
-            MAIN.post(() -> callback.onPrice(null));
+            MAIN.post(() -> callback.onOffers(null));
             return;
         }
-        PriceResult cached = CACHE.get(gtin);
-        if (cached != null || MISS.contains(gtin)) {
-            final PriceResult hit = cached;
-            MAIN.post(() -> callback.onPrice(hit));
+        List<Offer> cached = OFFERS_CACHE.get(gtin);
+        if (cached != null) {
+            final List<Offer> hit = cached;
+            MAIN.post(() -> callback.onOffers(hit));
             return;
         }
         if (rateLimitedUntilMs > System.currentTimeMillis()) {
             // Trial quota exhausted: don't burn requests, report unknown.
-            MAIN.post(() -> callback.onPrice(null));
+            MAIN.post(() -> callback.onOffers(null));
             return;
         }
         // In-flight coalescing, race-free: the map lock makes exactly one
         // thread the leader; joiners can only attach before the leader's
         // remove, so no callback is ever stranded.
         final boolean leader;
-        synchronized (IN_FLIGHT) {
-            List<PriceCallback> existing = IN_FLIGHT.get(gtin);
+        synchronized (OFFERS_IN_FLIGHT) {
+            List<OffersCallback> existing = OFFERS_IN_FLIGHT.get(gtin);
             if (existing == null) {
                 existing = new ArrayList<>();
-                IN_FLIGHT.put(gtin, existing);
+                OFFERS_IN_FLIGHT.put(gtin, existing);
                 leader = true;
             } else {
                 leader = false;
@@ -132,29 +180,26 @@ public final class PriceFetcher {
         }
         if (!leader) return;
         EXEC.execute(() -> {
-            PriceResult result = null;
+            List<Offer> result = null;
             try {
-                result = USE_WORKER ? lookupViaWorker(gtin) : lookupViaUpcitemdb(gtin);
-                if (result != null) {
-                    CACHE.put(gtin, result);
-                } else {
-                    // Confirmed "no usable offer" — safe to remember.
-                    MISS.add(gtin);
-                }
+                result = USE_WORKER ? lookupOffersViaWorker(gtin)
+                        : lookupOffersViaUpcitemdb(gtin);
+                // Confirmed answer (possibly "no offers"): safe to remember.
+                OFFERS_CACHE.put(gtin, result);
             } catch (PriceTransportException e) {
                 // Timeout / 429 / 5xx / bad response: NOT a miss. The next
                 // bind retries instead of showing nothing forever.
-                Log.w(TAG, "price lookup failed for " + gtin + "; not caching", e);
+                Log.w(TAG, "offers lookup failed for " + gtin + "; not caching", e);
             }
-            final List<PriceCallback> done;
-            synchronized (IN_FLIGHT) {
-                done = IN_FLIGHT.remove(gtin);
+            final List<OffersCallback> done;
+            synchronized (OFFERS_IN_FLIGHT) {
+                done = OFFERS_IN_FLIGHT.remove(gtin);
             }
-            final PriceResult finalResult = result;
+            final List<Offer> finalResult = result;
             MAIN.post(() -> {
                 if (done != null) {
-                    for (PriceCallback cb : done) {
-                        cb.onPrice(finalResult);
+                    for (OffersCallback cb : done) {
+                        cb.onOffers(finalResult);
                     }
                 }
             });
@@ -162,11 +207,11 @@ public final class PriceFetcher {
     }
 
     /**
-     * @return cheapest in-stock offer, or null when UPCitemdb confirms it
-     *         has no usable offer for this GTIN (a real miss).
+     * @return every usable offer for the GTIN (possibly empty when UPCitemdb
+     *         confirms it has none), cheapest first.
      * @throws PriceTransportException on HTTP/transport failure (not a miss).
      */
-    private static PriceResult lookupViaUpcitemdb(String gtin) throws PriceTransportException {
+    private static List<Offer> lookupOffersViaUpcitemdb(String gtin) throws PriceTransportException {
         HttpURLConnection conn = null;
         try {
             URL url = new URL(UPCITEMDB_TRIAL_URL + "?upc=" + gtin);
@@ -189,24 +234,10 @@ public final class PriceFetcher {
             while ((line = in.readLine()) != null) sb.append(line);
             in.close();
             JSONObject root = new JSONObject(sb.toString());
-            if (!"OK".equals(root.optString("code"))) return null;
+            if (!"OK".equals(root.optString("code"))) return new ArrayList<>();
             JSONArray items = root.optJSONArray("items");
-            if (items == null || items.length() == 0) return null;
-            JSONArray offers = items.getJSONObject(0).optJSONArray("offers");
-            if (offers == null) return null;
-            PriceResult best = null;
-            for (int i = 0; i < offers.length(); i++) {
-                JSONObject o = offers.getJSONObject(i);
-                String availability = o.optString("availability", "").toLowerCase(Locale.US);
-                if (availability.contains("out of stock")) continue;
-                double price = o.optDouble("price", Double.NaN);
-                if (Double.isNaN(price) || price <= 0) continue;
-                if (best == null || price < best.price) {
-                    best = new PriceResult(price, o.optString("merchant", ""),
-                            o.optString("currency", ""));
-                }
-            }
-            return best;
+            if (items == null || items.length() == 0) return new ArrayList<>();
+            return parseOffers(items.getJSONObject(0).optJSONArray("offers"));
         } catch (PriceTransportException e) {
             throw e;
         } catch (Exception e) {
@@ -216,7 +247,41 @@ public final class PriceFetcher {
         }
     }
 
-    private static PriceResult lookupViaWorker(String gtin) throws PriceTransportException {
+    /**
+     * Parses UPCitemdb {@code offers[]}: drops out-of-stock and unusable
+     * prices, keeps the cheapest offer per retailer (dedupe key: domain,
+     * else merchant name), sorted cheapest first. Pure — unit-testable.
+     */
+    static List<Offer> parseOffers(JSONArray offers) {
+        List<Offer> out = new ArrayList<>();
+        if (offers == null) return out;
+        java.util.Map<String, Offer> cheapestByStore = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < offers.length(); i++) {
+            JSONObject o = offers.optJSONObject(i);
+            if (o == null) continue;
+            String availability = o.optString("availability", "").toLowerCase(Locale.US);
+            if (availability.contains("out of stock")) continue;
+            double price = o.optDouble("price", Double.NaN);
+            if (Double.isNaN(price) || price <= 0) continue;
+            String merchant = o.optString("merchant", "").trim();
+            String domain = o.optString("domain", "").trim().toLowerCase(Locale.US);
+            if (domain.startsWith("www.")) domain = domain.substring(4);
+            String key = !domain.isEmpty() ? domain : merchant.toLowerCase(Locale.US);
+            if (key.isEmpty()) continue;
+            Offer offer = new Offer(merchant, domain, price,
+                    o.optString("currency", ""), o.optString("link", "").trim());
+            Offer prev = cheapestByStore.get(key);
+            if (prev == null || price < prev.price) {
+                cheapestByStore.put(key, offer);
+            }
+        }
+        out.addAll(cheapestByStore.values());
+        java.util.Collections.sort(out, (a, b) -> Double.compare(a.price, b.price));
+        return out;
+    }
+
+    /** Worker answers a single best offer; wrap it as a one-offer list. */
+    private static List<Offer> lookupOffersViaWorker(String gtin) throws PriceTransportException {
         HttpURLConnection conn = null;
         try {
             URL url = new URL(WORKER_URL + "?gtin=" + gtin);
@@ -234,9 +299,13 @@ public final class PriceFetcher {
             while ((line = in.readLine()) != null) sb.append(line);
             in.close();
             JSONObject root = new JSONObject(sb.toString());
-            if (!root.optBoolean("ok", false) || root.isNull("price")) return null;
-            return new PriceResult(root.optDouble("price", Double.NaN),
-                    root.optString("merchant", ""), root.optString("currency", "USD"));
+            List<Offer> out = new ArrayList<>();
+            if (!root.optBoolean("ok", false) || root.isNull("price")) return out;
+            double price = root.optDouble("price", Double.NaN);
+            if (Double.isNaN(price) || price <= 0) return out;
+            out.add(new Offer(root.optString("merchant", ""), "", price,
+                    root.optString("currency", "USD"), ""));
+            return out;
         } catch (PriceTransportException e) {
             throw e;
         } catch (Exception e) {
