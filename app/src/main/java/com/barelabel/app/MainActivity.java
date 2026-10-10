@@ -102,7 +102,7 @@ public class MainActivity extends AppCompatActivity {
     private View historyTabContent;
     private com.barelabel.app.ui.HistoryTabController historyTabController;
     private com.barelabel.app.ui.CompareTabController compareTabController;
-    private com.google.android.material.tabs.TabLayout mainTabLayout;
+    private com.google.android.material.bottomnavigation.BottomNavigationView bottomNav;
     private CheckBox verdictCompareBox;
     private ProductResult currentPrimaryResult;
     private final LinkedHashMap<String, ProductResult> comparePicks = new LinkedHashMap<>();
@@ -197,13 +197,12 @@ protected void onCreate(Bundle savedInstanceState) {
     }
 
 setupCategoryFilterPanel();
-    // 4c. Main tabs: Search | Compare | History. Search is the default landing tab.
-    mainTabLayout = findViewById(R.id.mainTabLayout);
-    com.google.android.material.tabs.TabLayout tabLayout = mainTabLayout;
+    // 4c. Bottom navigation: Search | Compare | History. Search is the default.
+    bottomNav = findViewById(R.id.bottomNav);
     View searchTabContent = findViewById(R.id.mainRootLayout);
     compareTabContent = findViewById(R.id.compareTabContent);
     historyTabContent = findViewById(R.id.historyTabContent);
-    if (tabLayout != null && searchTabContent != null) {
+    if (bottomNav != null && searchTabContent != null) {
         historyTabController = new com.barelabel.app.ui.HistoryTabController(
                 this, historyTabContent);
         compareTabController = new com.barelabel.app.ui.CompareTabController(
@@ -226,20 +225,13 @@ setupCategoryFilterPanel();
                     }
                 });
         final View searchContent = searchTabContent;
-        tabLayout.addOnTabSelectedListener(
-                new com.google.android.material.tabs.TabLayout.OnTabSelectedListener() {
-                    @Override
-                    public void onTabSelected(
-                            com.google.android.material.tabs.TabLayout.Tab tab) {
-                        showTab(tab.getPosition(), searchContent);
-                    }
-                    @Override
-                    public void onTabUnselected(
-                            com.google.android.material.tabs.TabLayout.Tab tab) {}
-                    @Override
-                    public void onTabReselected(
-                            com.google.android.material.tabs.TabLayout.Tab tab) {}
-                });
+        bottomNav.setOnItemSelectedListener(item -> {
+            int id = item.getItemId();
+            int position = id == R.id.nav_compare ? 1
+                    : id == R.id.nav_history ? 2 : 0;
+            showTab(position, searchContent);
+            return true;
+        });
         showTab(0, searchContent);
     }
 
@@ -975,12 +967,12 @@ private void openCompareForPicks() {
     compareTabController.compareExternal(
             ScannedProduct.fromProductResult(picked.get(0)),
             ScannedProduct.fromProductResult(picked.get(1)));
-    if (mainTabLayout != null) {
-        if (mainTabLayout.getSelectedTabPosition() == 1) {
+    if (bottomNav != null) {
+        if (bottomNav.getSelectedItemId() == R.id.nav_compare) {
             compareTabController.refresh();
         } else {
-            com.google.android.material.tabs.TabLayout.Tab tab = mainTabLayout.getTabAt(1);
-            if (tab != null) tab.select();
+            // Selecting fires the nav listener -> showTab(1) -> refresh.
+            bottomNav.setSelectedItemId(R.id.nav_compare);
         }
     }
 }

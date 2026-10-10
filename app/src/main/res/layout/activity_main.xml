@@ -74,33 +74,6 @@
                 app:tint="#374151" />
         </RelativeLayout>
 
-        <com.google.android.material.tabs.TabLayout
-            android:id="@+id/mainTabLayout"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="#FFFFFF"
-            app:tabGravity="fill"
-            app:tabIndicatorColor="#111827"
-            app:tabMode="fixed"
-            app:tabSelectedTextColor="#111827"
-            app:tabTextColor="#6B7280">
-
-            <com.google.android.material.tabs.TabItem
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Search" />
-
-            <com.google.android.material.tabs.TabItem
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Compare" />
-
-            <com.google.android.material.tabs.TabItem
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="History" />
-        </com.google.android.material.tabs.TabLayout>
-
         <FrameLayout
             android:id="@+id/tabContentContainer"
             android:layout_width="match_parent"
@@ -702,6 +675,15 @@
             </androidx.core.widget.NestedScrollView>
 
         </FrameLayout>
+
+        <!-- Bottom navigation: Search | Compare | History (thumb zone) -->
+        <com.google.android.material.bottomnavigation.BottomNavigationView
+            android:id="@+id/bottomNav"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#FFFFFF"
+            android:elevation="8dp"
+            app:menu="@menu/bottom_nav_menu" />
     </LinearLayout>
 
     <!-- Sticky results header: appears once the alternates card scrolls into view.
