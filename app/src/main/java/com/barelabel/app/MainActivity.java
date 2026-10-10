@@ -84,6 +84,8 @@ public class MainActivity extends AppCompatActivity {
     private androidx.recyclerview.widget.RecyclerView recentsRecycler;
     private TextView recentsLabel;
     private com.barelabel.app.ui.RecentsAdapter recentsAdapter;
+    private View skeletonCard;
+    private android.animation.ObjectAnimator skeletonPulse;
 
     // Separate Panels & Expandable Ingredients
     private View ingredientsCard;
@@ -389,6 +391,7 @@ private void refreshRecents() {
         flaggedList = findViewById(R.id.flaggedList);
         recentsRecycler = findViewById(R.id.recentsRecycler);
         recentsLabel = findViewById(R.id.recentsLabel);
+        skeletonCard = findViewById(R.id.skeletonCard);
 
         productTitleText = findViewById(R.id.productTitleText);
         productImageView = findViewById(R.id.productImageView);
@@ -476,6 +479,8 @@ private void refreshRecents() {
         resultCard.setVisibility(LinearLayout.GONE);
         alternatesController.resetToggle();
         statusText.setText("Searching USDA FoodData Central…");
+        statusText.setVisibility(View.VISIBLE);
+        setSkeletonVisible(true);
         ingredientsText.setText("");
 
         new Thread(() -> {
@@ -489,6 +494,11 @@ private void refreshRecents() {
                 ProductResult primaryResult = fetchedById
                         ? usdaApiClient.fetchFoodById(fdcId)
                         : usdaApiClient.searchPrimary(product);
+                runOnUiThread(() -> {
+                    if (generation == searchGeneration) {
+                        statusText.setText("Checking ingredients…");
+                    }
+                });
 
                 // 2. Unbranded search intent: when the query does not name the product's
                 //    brand, treat it as a category search and always show clean choices.
@@ -516,6 +526,11 @@ private void refreshRecents() {
                 if (TextUtils.isEmpty(foodType)) foodType = "Uncategorized";
 
                 // 4. Fetch clean candidates (+ which flagged categories blocked the rest)
+                runOnUiThread(() -> {
+                    if (generation == searchGeneration) {
+                        statusText.setText("Finding clean alternates…");
+                    }
+                });
                 AlternateSearchResult altSearch = alternateFinder.findCleanAlternates(
                         foodType, apiCategory, categoryIntent, primaryResult, product);
                 List<ProductResult> rawAlternates = altSearch.alternates;
@@ -546,6 +561,7 @@ private void refreshRecents() {
                     // the newer search's in-flight UI state.
                     if (generation != searchGeneration) return;
                     progress.setVisibility(ProgressBar.GONE);
+                    setSkeletonVisible(false);
                     searchButton.setEnabled(true);
                 });
             }
@@ -601,6 +617,8 @@ private void refreshRecents() {
                             boolean fetchedById) {
         currentPrimaryResult = result;
         clearComparePicks();
+        if (statusText != null) statusText.setVisibility(View.GONE);
+        setSkeletonVisible(false);
     // Unbranded category search (e.g. "cookies"): the top hit is just one random
     // branded product in the category, not what the user asked about, so hide the
     // primary verdict card and show only the clean-choices card.
@@ -608,6 +626,7 @@ private void refreshRecents() {
         if (resultCard != null) resultCard.setVisibility(View.GONE);
         alternatesController.show(foodType, true, true, flaggedCategories,
                 countActiveFilters(), reliefCounts);
+        updateSourceLine();
         updateStickyBar();
         return;
     }
@@ -791,6 +810,7 @@ private void refreshRecents() {
     // 4. Clean Alternates Section
     alternatesController.show(foodType, categoryIntent, isClean, flaggedCategories,
             countActiveFilters(), reliefCounts);
+    updateSourceLine();
     updateStickyBar();
 }
 
@@ -991,6 +1011,40 @@ private void bindVerdictChips(ProductResult result) {
         verdictChipsContainer.addView(chip);
     }
     verdictChipsContainer.setVisibility(any ? View.VISIBLE : View.GONE);
+}
+
+/** Shows/hides the pulsing skeleton card displayed while a search runs. */
+private void setSkeletonVisible(boolean show) {
+    if (skeletonCard == null) return;
+    if (skeletonPulse != null) {
+        skeletonPulse.cancel();
+        skeletonPulse = null;
+    }
+    skeletonCard.setVisibility(show ? View.VISIBLE : View.GONE);
+    if (show) {
+        skeletonPulse = android.animation.ObjectAnimator.ofFloat(
+                skeletonCard, "alpha", 0.35f, 1f);
+        skeletonPulse.setDuration(700);
+        skeletonPulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        skeletonPulse.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+        skeletonPulse.start();
+    } else {
+        skeletonCard.setAlpha(1f);
+    }
+}
+
+/** "USDA FoodData Central • N clean picks shown" provenance line. */
+private void updateSourceLine() {
+    TextView sourceText = findViewById(R.id.sourceText);
+    if (sourceText == null) return;
+    int shown = alternatesController.getExactCount()
+            + alternatesController.getMoreCount();
+    if (!alternatesController.isCardShowing() || shown == 0) {
+        sourceText.setVisibility(View.GONE);
+        return;
+    }
+    sourceText.setText("USDA FoodData Central • " + shown + " clean picks shown");
+    sourceText.setVisibility(View.VISIBLE);
 }
 
 /** Refreshes the sticky results bar from the alternates controller's state. */

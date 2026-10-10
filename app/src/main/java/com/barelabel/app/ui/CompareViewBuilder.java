@@ -101,6 +101,48 @@ public final class CompareViewBuilder {
         container.addView(legendView(context));
     }
 
+    /** "🏆 X wins — N fewer flagged ingredients" takeaway banner. */
+    private static View deltaBanner(Context context, ScannedProduct a, ScannedProduct b) {
+        int fa = a.flagged == null ? 0 : a.flagged.size();
+        int fb = b.flagged == null ? 0 : b.flagged.size();
+        String text;
+        boolean tie = fa == fb;
+        if (tie) {
+            text = fa == 0 ? "Both are clean 🎉" : "Tie — " + fa + " flagged each";
+        } else {
+            ScannedProduct winner = fa < fb ? a : b;
+            int diff = Math.abs(fa - fb);
+            text = "🏆 " + shortName(winner) + " wins — " + diff
+                    + (diff == 1 ? " fewer flagged ingredient"
+                                 : " fewer flagged ingredients");
+        }
+        TextView tv = new TextView(context);
+        tv.setText(text);
+        tv.setTextSize(15f);
+        tv.setTypeface(Typeface.DEFAULT_BOLD);
+        tv.setTextColor(Color.parseColor("#FFFFFF"));
+        tv.setGravity(Gravity.CENTER);
+        int pad = dp(context, 10);
+        tv.setPadding(pad, pad, pad, pad);
+        android.graphics.drawable.GradientDrawable bg =
+                new android.graphics.drawable.GradientDrawable();
+        bg.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
+        bg.setCornerRadius(dp(context, 12));
+        bg.setColor(tie ? C_GRAY_500 : C_GREEN_700);
+        tv.setBackground(bg);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(context, 12);
+        tv.setLayoutParams(lp);
+        return tv;
+    }
+
+    /** Trims a display name for the one-line banner. */
+    private static String shortName(ScannedProduct p) {
+        String n = p.displayName();
+        return n.length() <= 28 ? n : n.substring(0, 27) + "…";
+    }
+
     private static LinearLayout.LayoutParams columnParams() {
         return new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
     }

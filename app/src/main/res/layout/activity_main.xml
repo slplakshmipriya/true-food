@@ -223,6 +223,42 @@
             android:layout_marginTop="24dp"
             android:visibility="gone" />
 
+        <!-- Skeleton placeholder while a search runs (pulsed in code) -->
+        <LinearLayout
+            android:id="@+id/skeletonCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_card"
+            android:elevation="1dp"
+            android:orientation="vertical"
+            android:padding="20dp"
+            android:visibility="gone">
+
+            <View
+                android:layout_width="60%"
+                android:layout_height="18dp"
+                android:background="#E5E7EB" />
+
+            <View
+                android:layout_width="40%"
+                android:layout_height="30dp"
+                android:layout_marginTop="12dp"
+                android:background="#E5E7EB" />
+
+            <View
+                android:layout_width="85%"
+                android:layout_height="14dp"
+                android:layout_marginTop="12dp"
+                android:background="#E5E7EB" />
+
+            <View
+                android:layout_width="70%"
+                android:layout_height="14dp"
+                android:layout_marginTop="8dp"
+                android:background="#E5E7EB" />
+        </LinearLayout>
+
         <!-- Recent scans strip (populated from scan history) -->
         <TextView
             android:id="@+id/recentsLabel"
@@ -612,6 +648,16 @@
                 android:lineSpacingExtra="4dp"
                 android:textColor="#374151"
                 android:textSize="14sp" />
+
+            <!-- Provenance: where the picks came from and how many are shown -->
+            <TextView
+                android:id="@+id/sourceText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:textColor="#9CA3AF"
+                android:textSize="11sp"
+                android:visibility="gone" />
 
             <Button
                 android:id="@+id/clearFiltersButton"
