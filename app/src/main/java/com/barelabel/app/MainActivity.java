@@ -81,6 +81,9 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout resultCard;
     private com.barelabel.app.ui.CleanScoreView cleanScoreView;
     private LinearLayout flaggedList;
+    private androidx.recyclerview.widget.RecyclerView recentsRecycler;
+    private TextView recentsLabel;
+    private com.barelabel.app.ui.RecentsAdapter recentsAdapter;
 
     // Separate Panels & Expandable Ingredients
     private View ingredientsCard;
@@ -187,6 +190,24 @@ protected void onCreate(Bundle savedInstanceState) {
     ImageButton scanBarcodeButton = findViewById(R.id.scanBarcodeButton);
     if (scanBarcodeButton != null) {
         scanBarcodeButton.setOnClickListener(v -> openBarcodeScanner());
+    }
+    // Scan-first hero: same scanner, bigger target.
+    Button scanHeroButton = findViewById(R.id.scanHeroButton);
+    if (scanHeroButton != null) {
+        scanHeroButton.setOnClickListener(v -> openBarcodeScanner());
+    }
+
+    // Recent scans strip (Search tab): tap a card to re-run that search.
+    if (recentsRecycler != null) {
+        recentsRecycler.setLayoutManager(
+                new androidx.recyclerview.widget.LinearLayoutManager(
+                        this, androidx.recyclerview.widget.LinearLayoutManager.HORIZONTAL,
+                        false));
+        recentsAdapter = new com.barelabel.app.ui.RecentsAdapter(p -> {
+            searchBox.setText(p.displayName());
+            search();
+        });
+        recentsRecycler.setAdapter(recentsAdapter);
     }
 
     // 4b. Settings (wrench): preferred retailer for Buy links.
@@ -329,6 +350,32 @@ setupCategoryFilterPanel();
 }
 
 
+@Override
+protected void onResume() {
+    super.onResume();
+    refreshRecents();
+}
+
+/** Reloads the Recent scans strip from disk (newest first, max 10). */
+private void refreshRecents() {
+    if (recentsAdapter == null) return;
+    new Thread(() -> {
+        List<ScannedProduct> all = ScanHistoryRepository.getAll(this);
+        final List<ScannedProduct> top = all.size() > 10 ? all.subList(0, 10) : all;
+        runOnUiThread(() -> {
+            recentsAdapter.setItems(top);
+            boolean has = !top.isEmpty();
+            if (recentsRecycler != null) {
+                recentsRecycler.setVisibility(has ? View.VISIBLE : View.GONE);
+            }
+            if (recentsLabel != null) {
+                recentsLabel.setVisibility(has ? View.VISIBLE : View.GONE);
+            }
+        });
+    }).start();
+}
+
+
     private void bindViews() {
         searchBox = findViewById(R.id.searchBox);
         searchButton = findViewById(R.id.searchButton);
@@ -340,6 +387,8 @@ setupCategoryFilterPanel();
         resultCard = findViewById(R.id.resultCard);
         cleanScoreView = findViewById(R.id.cleanScoreView);
         flaggedList = findViewById(R.id.flaggedList);
+        recentsRecycler = findViewById(R.id.recentsRecycler);
+        recentsLabel = findViewById(R.id.recentsLabel);
 
         productTitleText = findViewById(R.id.productTitleText);
         productImageView = findViewById(R.id.productImageView);

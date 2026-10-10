@@ -923,6 +923,30 @@ public class AlternatesCardController {
         return row;
     }
 
+    /**
+     * "Why this one" microcopy from the alternate's own label: its clean
+     * highlight ingredients when it has any, else a plain pass statement.
+     */
+    private String buildWhyLine(ProductResult alt) {
+        if (alt == null || TextUtils.isEmpty(alt.ingredients)) {
+            return "";
+        }
+        List<String> highlights = new ArrayList<>();
+        for (String token : alt.ingredients.split(",")) {
+            String t = token.trim();
+            if (!t.isEmpty()
+                    && com.barelabel.app.FlaggedIngredientManager
+                            .isSuperiorIngredient(activity, t)) {
+                highlights.add(t);
+                if (highlights.size() == 3) break;
+            }
+        }
+        if (highlights.isEmpty()) {
+            return "Why: passes all your flagged filters";
+        }
+        return "Why: clean highlights — " + TextUtils.join(", ", highlights);
+    }
+
     private String rowKey(ProductResult p) {
         return (p.name == null ? "" : p.name) + "|" + (p.brand == null ? "" : p.brand);
     }
