@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Exposes share-sheet images (product photo or app logo) from the cache dir. -->
+<paths>
+    <cache-path name="shared_images" path="shared_images/" />
+</paths>
