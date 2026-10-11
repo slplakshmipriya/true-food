@@ -7,4 +7,13 @@
     <color name="dark">#172018</color>
     <color name="gray">#667066</color>
     <color name="ic_launcher_background">#045032</color>
+
+    <!-- App background gradient (light). Night variants in values-night. -->
+    <color name="gradient_start">#DDEEDF</color>
+    <color name="gradient_center">#F4F8F1</color>
+    <color name="gradient_end">#FBF3E4</color>
+
+    <!-- Verdict washes -->
+    <color name="wash_clean">#E8F5E9</color>
+    <color name="wash_dirty">#FFEBEE</color>
 </resources>

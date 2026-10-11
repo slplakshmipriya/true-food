@@ -75,6 +75,9 @@ public final class CompareViewBuilder {
         container.removeAllViews();
         if (a == null || b == null) return;
 
+        // Delta banner: the one-line takeaway before the detail table.
+        container.addView(deltaBanner(context, a, b));
+
         // Product header columns
         LinearLayout headerRow = new LinearLayout(context);
         headerRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -96,6 +99,48 @@ public final class CompareViewBuilder {
 
         container.addView(divider(context), dividerParams(context));
         container.addView(legendView(context));
+    }
+
+    /** "🏆 X wins — N fewer flagged ingredients" takeaway banner. */
+    private static View deltaBanner(Context context, ScannedProduct a, ScannedProduct b) {
+        int fa = a.flagged == null ? 0 : a.flagged.size();
+        int fb = b.flagged == null ? 0 : b.flagged.size();
+        String text;
+        boolean tie = fa == fb;
+        if (tie) {
+            text = fa == 0 ? "Both are clean 🎉" : "Tie — " + fa + " flagged each";
+        } else {
+            ScannedProduct winner = fa < fb ? a : b;
+            int diff = Math.abs(fa - fb);
+            text = "🏆 " + shortName(winner) + " wins — " + diff
+                    + (diff == 1 ? " fewer flagged ingredient"
+                                 : " fewer flagged ingredients");
+        }
+        TextView tv = new TextView(context);
+        tv.setText(text);
+        tv.setTextSize(15f);
+        tv.setTypeface(Typeface.DEFAULT_BOLD);
+        tv.setTextColor(Color.parseColor("#FFFFFF"));
+        tv.setGravity(Gravity.CENTER);
+        int pad = dp(context, 10);
+        tv.setPadding(pad, pad, pad, pad);
+        android.graphics.drawable.GradientDrawable bg =
+                new android.graphics.drawable.GradientDrawable();
+        bg.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
+        bg.setCornerRadius(dp(context, 12));
+        bg.setColor(tie ? C_GRAY_500 : C_GREEN_700);
+        tv.setBackground(bg);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dp(context, 12);
+        tv.setLayoutParams(lp);
+        return tv;
+    }
+
+    /** Trims a display name for the one-line banner. */
+    private static String shortName(ScannedProduct p) {
+        String n = p.displayName();
+        return n.length() <= 28 ? n : n.substring(0, 27) + "…";
     }
 
     private static LinearLayout.LayoutParams columnParams() {
@@ -183,7 +228,7 @@ public final class CompareViewBuilder {
         return col;
     }
 
-    /** Buy + Save text buttons under a product column. */
+    /** Buy + Save icon buttons under a product column. */
     private static LinearLayout actionRow(Context context, ScannedProduct p,
                                           java.util.Set<String> savedKeys,
                                           CompareActionListener listener) {
@@ -195,33 +240,37 @@ public final class CompareViewBuilder {
         rowParams.topMargin = dp(context, 8);
         row.setLayoutParams(rowParams);
 
-        TextView buy = new TextView(context);
-        buy.setText("Buy");
-        buy.setTextSize(14f);
-        buy.setTypeface(null, Typeface.BOLD);
-        buy.setTextColor(C_BLUE_600);
-        buy.setPadding(dp(context, 12), dp(context, 6), dp(context, 12), dp(context, 6));
+        android.widget.ImageView buy = new android.widget.ImageView(context);
+        buy.setImageResource(R.drawable.ic_cart_search_blue);
+        buy.setContentDescription("Buy");
+        int touch = dp(context, 40);
+        LinearLayout.LayoutParams buyParams = new LinearLayout.LayoutParams(touch, touch);
+        buyParams.rightMargin = dp(context, 4);
+        buy.setLayoutParams(buyParams);
+        buy.setPadding(dp(context, 8), dp(context, 8), dp(context, 8), dp(context, 8));
         buy.setClickable(true);
         buy.setFocusable(true);
         buy.setOnClickListener(v -> listener.onBuy(p));
         row.addView(buy);
 
-        TextView save = new TextView(context);
         boolean alreadySaved = savedKeys != null && savedKeys.contains(productKey(p));
-        save.setText(alreadySaved ? "Saved \u2713" : "Save");
-        save.setTextSize(14f);
-        save.setTypeface(null, Typeface.BOLD);
-        save.setTextColor(alreadySaved ? C_GRAY_400 : C_GRAY_700);
-        save.setPadding(dp(context, 12), dp(context, 6), dp(context, 12), dp(context, 6));
+        android.widget.ImageView save = new android.widget.ImageView(context);
+        save.setImageResource(alreadySaved
+                ? R.drawable.ic_heart_filled : R.drawable.ic_heart_outline);
+        save.setContentDescription(alreadySaved ? "Saved" : "Save");
+        save.setLayoutParams(new LinearLayout.LayoutParams(touch, touch));
+        save.setPadding(dp(context, 8), dp(context, 8), dp(context, 8), dp(context, 8));
         save.setEnabled(!alreadySaved);
-        save.setClickable(!alreadySaved);
-        save.setFocusable(!alreadySaved);
+        save.setAlpha(alreadySaved ? 0.4f : 1f);
         if (!alreadySaved) {
+            save.setClickable(true);
+            save.setFocusable(true);
             save.setOnClickListener(v -> {
                 if (listener.onSave(p)) {
-                    save.setText("Saved \u2713");
-                    save.setTextColor(C_GRAY_400);
+                    save.setImageResource(R.drawable.ic_heart_filled);
+                    save.setContentDescription("Saved");
                     save.setEnabled(false);
+                    save.setAlpha(0.4f);
                 }
             });
         }

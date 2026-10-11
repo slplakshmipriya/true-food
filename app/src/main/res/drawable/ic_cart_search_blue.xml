@@ -1,0 +1,9 @@
+<!-- Blue cart with a magnifier badge on top, for light backgrounds. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_cart_base_blue" />
+    <item
+        android:drawable="@drawable/ic_search_badge"
+        android:width="13dp"
+        android:height="13dp"
+        android:gravity="top|end" />
+</layer-list>

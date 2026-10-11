@@ -81,10 +81,10 @@ public class AlternatesCardController {
     private final TextView text;
     private final View exactPanel;
     private final TextView exactTitle;
-    private final LinearLayout exactList;
+    private final com.google.android.flexbox.FlexboxLayout exactList;
     private final View morePanel;
     private final TextView moreTitle;
-    private final LinearLayout moreList;
+    private final com.google.android.flexbox.FlexboxLayout moreList;
     private final View organicRow;
     private final SwitchCompat organicSwitch;
     private final TextView organicStateText;
@@ -92,6 +92,8 @@ public class AlternatesCardController {
     private final BuyListener buyListener;
 
     private boolean preferOrganic = false;
+    /** True while a category search is shown: stacks render as a 2-column grid. */
+    private boolean gridMode = false;
     private boolean updatingSwitch = false;
     private List<ProductResult> pool = new ArrayList<>();
     private List<ProductResult> exactPool = new ArrayList<>();
@@ -130,6 +132,13 @@ public class AlternatesCardController {
     }
 
     private SaveListener saveListener;
+
+    /** Host opens this alternate as the next search (its verdict card). */
+    public interface AlternateSearchListener {
+        void onOpenAlternate(ProductResult product);
+    }
+
+    private AlternateSearchListener alternateSearchListener;
     private Runnable onClearFilters;
 
     /** Host unchecks one filter category and re-searches (smart relief). */
@@ -244,6 +253,10 @@ public class AlternatesCardController {
         this.saveListener = listener;
     }
 
+    public void setAlternateSearchListener(AlternateSearchListener listener) {
+        this.alternateSearchListener = listener;
+    }
+
     /** Re-style every compare button from the host's pick set (call after any toggle). */
     public void syncCompareBoxes() {
         if (comparePickListener == null) return;
@@ -290,6 +303,24 @@ public class AlternatesCardController {
         p.setMarginEnd(dp(8));
         b.setLayoutParams(p);
         b.setPadding(dp(16), dp(6), dp(16), dp(6));
+        return b;
+    }
+
+    /** Icon action button: same pill styling as text buttons, 40dp touch target. */
+    private android.widget.ImageButton makeIconButton(Context ctx, int iconRes,
+                                                      int fillColor, int strokeColor,
+                                                      String contentDesc) {
+        android.widget.ImageButton b = new android.widget.ImageButton(ctx);
+        b.setImageResource(iconRes);
+        b.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
+        b.setContentDescription(contentDesc);
+        b.setBackground(pillBackground(fillColor, strokeColor));
+        b.setPadding(dp(8), dp(6), dp(8), dp(6));
+        b.setMinimumHeight(dp(40));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                dp(52), ViewGroup.LayoutParams.WRAP_CONTENT);
+        p.setMarginEnd(dp(8));
+        b.setLayoutParams(p);
         return b;
     }
 
@@ -358,6 +389,7 @@ public class AlternatesCardController {
         // Stash the context so the prefer-organic switch can re-rank without a new search.
         currentFoodType = foodType;
         currentCategoryIntent = categoryIntent;
+        gridMode = categoryIntent;
         currentAlternatesClean = isClean;
         currentFlaggedCategories = flaggedCategories != null ? flaggedCategories : new LinkedHashSet<>();
         currentActiveFilterCount = activeFilterCount;
@@ -370,9 +402,7 @@ public class AlternatesCardController {
         lastMoreCount = moreRanked.size();
 
         if (card != null && title != null && text != null) {
-            currentHeading = (categoryIntent && !TextUtils.isEmpty(foodType))
-                    ? "Clean choices in " + foodType
-                    : "Clean Alternates";
+            currentHeading = "Search results with clean ingredients";
             if (!exactRanked.isEmpty() || !moreRanked.isEmpty()) {
                 card.setVisibility(View.VISIBLE);
                 title.setText(currentHeading);
@@ -381,10 +411,13 @@ public class AlternatesCardController {
                     clearFiltersButton.setVisibility(View.GONE);
                 }
 
+                String moreHeading = TextUtils.isEmpty(foodType)
+                        ? "Clean options"
+                        : "Clean options in " + foodType;
                 bindStack(exactPanel, exactTitle, exactList, "Exact matches",
-                        exactRanked, true);
-                bindStack(morePanel, moreTitle, moreList, "More clean options",
-                        moreRanked, false);
+                        exactRanked, exactRanked.size());
+                bindStack(morePanel, moreTitle, moreList, moreHeading,
+                        moreRanked, OFFERS_ROW_COUNT);
 
                 if (!isRerank) {
                     AnalyticsTracker.alternatesViewed(
@@ -592,12 +625,15 @@ public class AlternatesCardController {
         if (morePanel != null) morePanel.setVisibility(View.GONE);
     }
 
-    /** How many rows at the top of the Exact matches stack get a live price. */
-    private static final int PRICE_ROW_COUNT = 3;
+    /** How many rows at the top of the Exact matches stack get price/offers. */
+    private static final int OFFERS_ROW_COUNT = 5;
+    /** Max retailer logos shown per row; the rest collapse into "+N". */
+    private static final int MAX_RETAILER_LOGOS = 6;
 
-    private void bindStack(View panel, TextView panelTitle, LinearLayout list,
+    private void bindStack(View panel, TextView panelTitle,
+                           com.google.android.flexbox.FlexboxLayout list,
                            String heading, List<AlternateRanker.RankedProduct> ranked,
-                           boolean fetchPrices) {
+                           int offersRowCount) {
         if (panel == null) return;
         if (ranked.isEmpty()) {
             panel.setVisibility(View.GONE);
@@ -609,51 +645,238 @@ public class AlternatesCardController {
         }
         if (list != null) {
             list.removeAllViews();
+            // Row views are tracked directly: in grid mode there are no
+            // divider children, so child indexes no longer map to rows.
+            List<View> rowViews = new ArrayList<>();
             for (int i = 0; i < ranked.size(); i++) {
-                list.addView(buildRowView(ranked.get(i)));
-                if (i < ranked.size() - 1) {
+                View rowView = buildRowView(ranked.get(i));
+                applyStackItemParams(rowView);
+                list.addView(rowView);
+                rowViews.add(rowView);
+                if (!gridMode && i < ranked.size() - 1) {
                     list.addView(buildDivider());
                 }
             }
-            // Prototype pricing: fetch live prices for the first few rows of the
-            // Exact matches stack only. Rows and dividers interleave, so row i
-            // lives at child index i*2.
-            if (fetchPrices) {
-                int n = Math.min(PRICE_ROW_COUNT, ranked.size());
+            // Prototype pricing: every Exact-matches row and the first few
+            // Clean-options rows fetch every retailer's offer for the item —
+            // cheapest price in the price slot, one logo chip per store in
+            // the strip. One UPCitemdb lookup per GTIN (cached); the trial
+            // quota is 100/day per device IP, so the Clean-options stack
+            // stays capped.
+            if (offersRowCount > 0) {
+                int n = Math.min(offersRowCount, ranked.size());
                 for (int i = 0; i < n; i++) {
                     AlternateRanker.RankedProduct rp = ranked.get(i);
                     if (rp == null || rp.product == null) continue;
                     final String gtin = rp.product.gtinUpc == null ? "" : rp.product.gtinUpc;
                     final String tag = "price:" + gtin;
-                    View rowView = list.getChildAt(i * 2);
-                    final TextView priceView = rowView instanceof ViewGroup
-                            ? (TextView) ((ViewGroup) rowView).findViewWithTag(tag)
-                            : null;
-                    if (priceView == null) continue;
-                    // WeakReference: a slow price fetch must not retain the
+                    final String stripTag = "offers:" + gtin;
+                    // Product name for the dead-link search fallback on logo tap.
+                    String pn = rp.product.name == null ? "" : rp.product.name.trim();
+                    String pb = rp.product.brand == null ? "" : rp.product.brand.trim();
+                    final String productName = (pn + (pb.isEmpty() ? "" : " " + pb)).trim();
+                    View rowView = rowViews.get(i);
+                    if (!(rowView instanceof ViewGroup)) continue;
+                    final TextView priceView = (TextView) ((ViewGroup) rowView).findViewWithTag(tag);
+                    final android.widget.LinearLayout strip = (android.widget.LinearLayout)
+                            ((ViewGroup) rowView).findViewWithTag(stripTag);
+                    if (priceView == null && strip == null) continue;
+                    // WeakReferences: a slow offers fetch must not retain the
                     // whole row hierarchy if the panel was torn down meanwhile.
                     final java.lang.ref.WeakReference<TextView> priceRef =
                             new java.lang.ref.WeakReference<>(priceView);
-                    PriceFetcher.fetch(gtin, result -> {
+                    final java.lang.ref.WeakReference<android.widget.LinearLayout> stripRef =
+                            new java.lang.ref.WeakReference<>(strip);
+                    com.barelabel.app.pricing.PriceFetcher.fetchOffers(gtin, offers -> {
+                        if (offers == null || offers.isEmpty()) return;
                         TextView pv = priceRef.get();
-                        if (pv == null) return;
                         // Row may have been rebound for a different product since.
-                        if (!TextUtils.equals(String.valueOf(pv.getTag()), tag)) return;
-                        if (result == null) return;
-                        pv.setText(result.displayText());
-                        pv.setVisibility(View.VISIBLE);
+                        if (pv != null && TextUtils.equals(String.valueOf(pv.getTag()), tag)) {
+                            pv.setText(offers.get(0).priceText());
+                            pv.setVisibility(View.VISIBLE);
+                        }
+                        android.widget.LinearLayout stripView = stripRef.get();
+                        if (stripView != null
+                                && TextUtils.equals(String.valueOf(stripView.getTag()), stripTag)) {
+                            bindRetailerStrip(stripView, offers, productName);
+                        }
                     });
                 }
             }
         }
     }
 
+    /**
+     * Row width inside a stack: in grid mode (category browsing) each row
+     * takes ~half the panel width (2 columns); otherwise the classic
+     * full-width list row.
+     */
+    private void applyStackItemParams(View rowView) {
+        com.google.android.flexbox.FlexboxLayout.LayoutParams lp =
+                new com.google.android.flexbox.FlexboxLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setFlexBasisPercent(gridMode ? 0.48f : 1.0f);
+        lp.setFlexGrow(gridMode ? 1f : 0f);
+        if (gridMode) {
+            lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+        }
+        rowView.setLayoutParams(lp);
+    }
+
     private View buildDivider() {
         View divider = new View(activity);
-        divider.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
+        com.google.android.flexbox.FlexboxLayout.LayoutParams lp =
+                new com.google.android.flexbox.FlexboxLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
+        lp.setFlexBasisPercent(1.0f);
+        divider.setLayoutParams(lp);
         divider.setBackgroundColor(C_GRAY_200);
         return divider;
+    }
+
+    /**
+     * Fills the retailer strip: one logo chip per store carrying the item
+     * (cheapest first, logos only) — tapping a chip opens that store's
+     * product page. Capped so the strip never overflows the card; the
+     * remainder collapses into a "+N" chip.
+     */
+    private void bindRetailerStrip(android.widget.LinearLayout strip,
+            java.util.List<com.barelabel.app.pricing.UpcOffers.Offer> offers,
+            String productName) {
+        Context ctx = activity;
+        strip.removeAllViews();
+        if (offers == null || offers.isEmpty()) {
+            strip.setVisibility(View.GONE);
+            return;
+        }
+        strip.setVisibility(View.VISIBLE);
+        int shown = Math.min(offers.size(), MAX_RETAILER_LOGOS);
+        for (int i = 0; i < shown; i++) {
+            final com.barelabel.app.pricing.UpcOffers.Offer offer = offers.get(i);
+            android.widget.ImageView logo = new android.widget.ImageView(ctx);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(26), dp(26));
+            lp.setMarginEnd(dp(6));
+            logo.setLayoutParams(lp);
+            logo.setPadding(dp(3), dp(3), dp(3), dp(3));
+            android.graphics.drawable.GradientDrawable chipBg =
+                    new android.graphics.drawable.GradientDrawable();
+            chipBg.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
+            chipBg.setCornerRadius(dp(6));
+            chipBg.setColor(C_WHITE);
+            logo.setBackground(chipBg);
+            logo.setContentDescription(offer.merchant);
+            RetailerLogos.loadInto(ctx, logo, offer.merchant, offer.domain);
+            if (!offer.link.isEmpty() && offer.link.startsWith("http")) {
+                logo.setClickable(true);
+                final String link = offer.link;
+                final String merchant = offer.merchant;
+                final String domain = offer.domain;
+                logo.setOnClickListener(v -> openOfferLink(link, productName, merchant, domain));
+            }
+            strip.addView(logo);
+        }
+        if (offers.size() > shown) {
+            TextView more = new TextView(ctx);
+            more.setText("+" + (offers.size() - shown));
+            more.setTextSize(10f);
+            more.setTextColor(C_GRAY_500);
+            strip.addView(more);
+        }
+    }
+
+    /**
+     * Opens a retailer's product page in a Custom Tab (URL bar visible).
+     * UPCitemdb offer URLs rot — products get delisted, merchants die — and
+     * a Custom Tab can't report a 404, so the URL is probed first on a
+     * background thread. A hard-dead page (404/410/DNS/timeout) falls back
+     * to a merchant-scoped search for the product; anything ambiguous
+     * (bot-blocked 403s, 5xx) opens the link as-is rather than stranding
+     * the user.
+     */
+    private void openOfferLink(String url, String productName,
+                               String merchant, String domain) {
+        new Thread(() -> {
+            String target = url;
+            boolean dead = linkLooksDead(url);
+            if (dead) {
+                String q = (!domain.isEmpty() ? "site:" + domain + " " : "")
+                        + productName
+                        + (merchant.isEmpty() ? "" : " " + merchant);
+                try {
+                    target = "https://www.google.com/search?q="
+                            + java.net.URLEncoder.encode(q.trim(), "UTF-8");
+                } catch (Exception ignored) {
+                    target = url;
+                    dead = false;
+                }
+            }
+            final String open = target;
+            final boolean showFallbackNote = dead;
+            android.app.Activity act = activity;
+            if (act == null) return;
+            act.runOnUiThread(() -> {
+                if (showFallbackNote) {
+                    android.widget.Toast.makeText(act,
+                            "That product page is gone — showing search results instead.",
+                            android.widget.Toast.LENGTH_SHORT).show();
+                }
+                launchUrl(open);
+            });
+        }).start();
+    }
+
+    /** True only on a hard-dead page: 404/410, unresolvable host, or timeout. */
+    private static boolean linkLooksDead(String url) {
+        java.net.HttpURLConnection conn = null;
+        try {
+            conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            conn.setRequestMethod("HEAD");
+            conn.setConnectTimeout(6000);
+            conn.setReadTimeout(6000);
+            conn.setInstanceFollowRedirects(true);
+            conn.setRequestProperty("User-Agent",
+                    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
+                            + "(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36");
+            int code = conn.getResponseCode();
+            if (code == 405 || code == 501) {
+                // HEAD not implemented: retry as GET, headers only.
+                conn.disconnect();
+                conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(6000);
+                conn.setReadTimeout(6000);
+                conn.setInstanceFollowRedirects(true);
+                conn.setRequestProperty("User-Agent",
+                        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
+                                + "(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36");
+                code = conn.getResponseCode();
+            }
+            return code == 404 || code == 410;
+        } catch (java.net.UnknownHostException | java.net.SocketTimeoutException e) {
+            return true;
+        } catch (Exception e) {
+            return false;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    /** Opens a URL in a Custom Tab, falling back to a plain VIEW intent. */
+    private void launchUrl(String url) {
+        try {
+            new androidx.browser.customtabs.CustomTabsIntent.Builder()
+                    .setShowTitle(true)
+                    .build()
+                    .launchUrl(activity, android.net.Uri.parse(url));
+        } catch (Exception e) {
+            try {
+                activity.startActivity(new android.content.Intent(
+                        android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)));
+            } catch (Exception ignored) {
+                // No browser available: the logo stays a passive indicator.
+            }
+        }
     }
 
     /**
@@ -699,16 +922,24 @@ public class AlternatesCardController {
         headerRow.addView(titleView);
 
         // Product thumbnail: conditional slot, only visible when OFF has an image.
-        // Fixed 56dp so rows never shift; GONE (text-only row) until resolved.
+        // GONE (text-only row, no reserved space) until resolved.
         android.widget.ImageView thumbView = new android.widget.ImageView(ctx);
-        int thumbSize = dp(56);
-        LinearLayout.LayoutParams thumbParams = new LinearLayout.LayoutParams(
-                thumbSize, thumbSize);
-        thumbParams.setMarginEnd(dp(10));
-        thumbView.setLayoutParams(thumbParams);
         thumbView.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
         thumbView.setVisibility(View.GONE);
-        headerRow.addView(thumbView, 0);
+        if (gridMode) {
+            // Grid card: the image takes a full-width banner above the title —
+            // real room to see it, and the title keeps the column's full width.
+            thumbView.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(110)));
+            row.addView(thumbView);
+        } else {
+            // List row: fixed 56dp thumb beside the title.
+            LinearLayout.LayoutParams thumbParams = new LinearLayout.LayoutParams(
+                    dp(56), dp(56));
+            thumbParams.setMarginEnd(dp(10));
+            thumbView.setLayoutParams(thumbParams);
+            headerRow.addView(thumbView, 0);
+        }
         String thumbGtin = alt.gtinUpc;
         thumbView.setTag(thumbGtin);
 
@@ -761,9 +992,21 @@ public class AlternatesCardController {
         metaView.setPadding(0, dp(4), 0, 0);
         row.addView(metaView);
 
-        // Live price slot for the prototype pricing fetch (Exact matches stack
-        // only): hidden until a price resolves; tagged by GTIN so bindStack can
-        // find and update it, and stale callbacks can bail out.
+        // Why-this-one line: names the alt's real clean-highlight ingredients
+        // (from its own label), so the pick explains itself at a glance.
+        String whyText = buildWhyLine(alt);
+        if (!whyText.isEmpty()) {
+            TextView whyView = new TextView(ctx);
+            whyView.setText(whyText);
+            whyView.setTextSize(12f);
+            whyView.setTextColor(C_EMERALD_700);
+            whyView.setPadding(0, dp(2), 0, 0);
+            row.addView(whyView);
+        }
+
+        // Live price slot for the prototype pricing fetch: hidden until a
+        // price resolves; tagged by GTIN so bindStack can find and update
+        // it, and stale callbacks can bail out.
         TextView priceView = new TextView(ctx);
         priceView.setTag("price:" + (alt.gtinUpc == null ? "" : alt.gtinUpc));
         priceView.setTextSize(13f);
@@ -772,6 +1015,17 @@ public class AlternatesCardController {
         priceView.setPadding(0, dp(2), 0, 0);
         priceView.setVisibility(View.GONE);
         row.addView(priceView);
+
+        // Retailer strip: one logo chip per store carrying this item
+        // (UPCitemdb offers), populated by bindStack's offers fetch; GONE
+        // until offers land. Tag mirrors the price slot for staleness checks.
+        android.widget.LinearLayout retailerStrip = new android.widget.LinearLayout(ctx);
+        retailerStrip.setOrientation(LinearLayout.HORIZONTAL);
+        retailerStrip.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        retailerStrip.setTag("offers:" + (alt.gtinUpc == null ? "" : alt.gtinUpc));
+        retailerStrip.setPadding(0, dp(6), 0, 0);
+        retailerStrip.setVisibility(View.GONE);
+        row.addView(retailerStrip);
 
         // Open Food Facts enrichment: thumbnail, friendlier title, cleaner brand.
         // Single lookup; the resolver serves repeat calls from its memory cache.
@@ -818,13 +1072,14 @@ public class AlternatesCardController {
                                     ? View.VISIBLE : View.GONE);
                 });
 
-        // Action row: real Buy / Save / Compare buttons below the meta line.
+        // Action row: Buy / Save icon buttons + Compare text button below the
+        // meta line.
         LinearLayout actionRow = new LinearLayout(ctx);
         actionRow.setOrientation(LinearLayout.HORIZONTAL);
         actionRow.setPadding(0, dp(10), 0, 0);
 
-        android.widget.Button buyButton = makeActionButton(ctx, "Buy",
-                C_BLUE_600, C_WHITE, 0);
+        android.widget.ImageButton buyButton = makeIconButton(ctx,
+                R.drawable.ic_cart_search, C_BLUE_600, 0, "Buy");
         buyButton.setOnClickListener(v -> {
             AnalyticsTracker.buyTapped("alternate");
             buyListener.onBuy(alt);
@@ -832,16 +1087,15 @@ public class AlternatesCardController {
         actionRow.addView(buyButton);
 
         if (saveListener != null) {
-            android.widget.Button saveButton = makeActionButton(ctx, "Save",
-                    C_WHITE, C_BLUE_600,
-                    C_BLUE_600);
+            android.widget.ImageButton saveButton = makeIconButton(ctx,
+                    R.drawable.ic_heart_outline, C_WHITE, C_BLUE_600, "Save");
             saveButton.setOnClickListener(v -> {
                 if (saveListener.onSaveProduct(alt)) {
-                    saveButton.setText("Saved \u2713");
+                    saveButton.setImageResource(R.drawable.ic_heart_filled);
+                    saveButton.setContentDescription("Saved");
                     saveButton.setEnabled(false);
                     saveButton.setBackground(
                             pillBackground(C_GRAY_100, 0));
-                    saveButton.setTextColor(C_GRAY_400);
                 }
             });
             actionRow.addView(saveButton);
@@ -896,7 +1150,10 @@ public class AlternatesCardController {
         chevron.setText(expanded ? "⌄" : "›");
         row.addView(expandBox);
 
-        row.setOnClickListener(v -> {
+        // Tapping the card opens this alternate as the next search (verdict
+        // card); the chevron alone expands the ingredient list in place.
+        // The row's buttons consume their own taps, as before.
+        final Runnable toggleExpand = () -> {
             boolean nowExpanded = expandBox.getVisibility() != View.VISIBLE;
             if (nowExpanded) {
                 expandedKeys.add(key);
@@ -906,9 +1163,44 @@ public class AlternatesCardController {
             }
             expandBox.setVisibility(nowExpanded ? View.VISIBLE : View.GONE);
             chevron.setText(nowExpanded ? "⌄" : "›");
+        };
+        chevron.setMinimumWidth(dp(40));
+        chevron.setMinimumHeight(dp(40));
+        chevron.setGravity(android.view.Gravity.CENTER);
+        chevron.setOnClickListener(v -> toggleExpand.run());
+        row.setOnClickListener(v -> {
+            if (alternateSearchListener != null) {
+                alternateSearchListener.onOpenAlternate(alt);
+            } else {
+                toggleExpand.run();
+            }
         });
 
         return row;
+    }
+
+    /**
+     * "Why this one" microcopy from the alternate's own label: its clean
+     * highlight ingredients when it has any, else a plain pass statement.
+     */
+    private String buildWhyLine(ProductResult alt) {
+        if (alt == null || TextUtils.isEmpty(alt.ingredients)) {
+            return "";
+        }
+        List<String> highlights = new ArrayList<>();
+        for (String token : alt.ingredients.split(",")) {
+            String t = token.trim();
+            if (!t.isEmpty()
+                    && com.barelabel.app.FlaggedIngredientManager
+                            .isSuperiorIngredient(activity, t)) {
+                highlights.add(t);
+                if (highlights.size() == 3) break;
+            }
+        }
+        if (highlights.isEmpty()) {
+            return "Why: passes all your flagged filters";
+        }
+        return "Why: clean highlights — " + TextUtils.join(", ", highlights);
     }
 
     private String rowKey(ProductResult p) {

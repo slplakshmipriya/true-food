@@ -8,7 +8,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#F8F9FA"
+        android:background="@drawable/bg_app_gradient"
         android:orientation="vertical">
 
         <!-- Enhanced Header Bar with Settings Button -->
@@ -44,7 +44,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="BareLabel"
-                        android:textColor="#111827"
+                        android:textColor="?attr/colorOnSurface"
                         android:textSize="26sp"
                         android:textStyle="bold" />
                 </LinearLayout>
@@ -54,7 +54,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
                     android:text="Screen ingredients • Shop clean alternates"
-                    android:textColor="#6B7280"
+                    android:textColor="?attr/colorOnSurfaceVariant"
                     android:textSize="13sp" />
             </LinearLayout>
 
@@ -74,33 +74,6 @@
                 app:tint="#374151" />
         </RelativeLayout>
 
-        <com.google.android.material.tabs.TabLayout
-            android:id="@+id/mainTabLayout"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="#FFFFFF"
-            app:tabGravity="fill"
-            app:tabIndicatorColor="#111827"
-            app:tabMode="fixed"
-            app:tabSelectedTextColor="#111827"
-            app:tabTextColor="#6B7280">
-
-            <com.google.android.material.tabs.TabItem
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Search" />
-
-            <com.google.android.material.tabs.TabItem
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Compare" />
-
-            <com.google.android.material.tabs.TabItem
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="History" />
-        </com.google.android.material.tabs.TabLayout>
-
         <FrameLayout
             android:id="@+id/tabContentContainer"
             android:layout_width="match_parent"
@@ -111,7 +84,7 @@
                 android:id="@+id/mainRootLayout"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="#F8F9FA"
+                android:background="@android:color/transparent"
                 android:fillViewport="true"
                 android:focusable="true"
                 android:focusableInTouchMode="true">
@@ -123,6 +96,18 @@
                     android:padding="20dp">
 
 
+
+        <!-- Scan-first hero: the in-store flow gets the biggest target -->
+        <Button
+            android:id="@+id/scanHeroButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/bg_scan_hero"
+            android:text="📷  SCAN A BARCODE"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
 
         <!-- Search Bar Container -->
         <LinearLayout
@@ -238,6 +223,61 @@
             android:layout_marginTop="24dp"
             android:visibility="gone" />
 
+        <!-- Skeleton placeholder while a search runs (pulsed in code) -->
+        <LinearLayout
+            android:id="@+id/skeletonCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_card"
+            android:elevation="1dp"
+            android:orientation="vertical"
+            android:padding="20dp"
+            android:visibility="gone">
+
+            <View
+                android:layout_width="200dp"
+                android:layout_height="18dp"
+                android:background="#E5E7EB" />
+
+            <View
+                android:layout_width="140dp"
+                android:layout_height="30dp"
+                android:layout_marginTop="12dp"
+                android:background="#E5E7EB" />
+
+            <View
+                android:layout_width="280dp"
+                android:layout_height="14dp"
+                android:layout_marginTop="12dp"
+                android:background="#E5E7EB" />
+
+            <View
+                android:layout_width="230dp"
+                android:layout_height="14dp"
+                android:layout_marginTop="8dp"
+                android:background="#E5E7EB" />
+        </LinearLayout>
+
+        <!-- Recent scans strip (populated from scan history) -->
+        <TextView
+            android:id="@+id/recentsLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Recent scans"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recentsRecycler"
+            android:layout_width="match_parent"
+            android:layout_height="104dp"
+            android:layout_marginTop="8dp"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/statusText"
             android:layout_width="match_parent"
@@ -289,13 +329,20 @@
                     android:textColor="#111827"
                     android:textSize="20sp"
                     android:textStyle="bold" />
+
+                <com.barelabel.app.ui.CleanScoreView
+                    android:id="@+id/cleanScoreView"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:layout_marginStart="12dp"
+                    android:contentDescription="Clean Score" />
             </LinearLayout>
 
             <TextView
                 android:id="@+id/verdictText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textSize="22sp"
+                android:textSize="30sp"
                 android:textStyle="bold" />
 
             <com.google.android.flexbox.FlexboxLayout
@@ -322,7 +369,16 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:textColor="#7F1D1D"
-                android:textSize="14sp" />
+                android:textSize="14sp"
+                android:visibility="gone" />
+
+            <!-- Expandable per-ingredient rows (tap for why it matters) -->
+            <LinearLayout
+                android:id="@+id/flaggedList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone" />
 
             <Button
                 android:id="@+id/walmartButton"
@@ -515,11 +571,12 @@
                     android:scrollbarThumbVertical="@drawable/scrollbar_thumb_vertical"
                     android:scrollbarTrackVertical="@drawable/scrollbar_track_vertical">
 
-                    <LinearLayout
+                    <com.google.android.flexbox.FlexboxLayout
                         android:id="@+id/exactMatchesList"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical" />
+                        app:flexWrap="wrap"
+                        app:justifyContent="flex_start" />
                 </androidx.core.widget.NestedScrollView>
             </LinearLayout>
 
@@ -574,11 +631,12 @@
                     android:scrollbarThumbVertical="@drawable/scrollbar_thumb_vertical"
                     android:scrollbarTrackVertical="@drawable/scrollbar_track_vertical">
 
-                    <LinearLayout
+                    <com.google.android.flexbox.FlexboxLayout
                         android:id="@+id/moreOptionsList"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical" />
+                        app:flexWrap="wrap"
+                        app:justifyContent="flex_start" />
                 </androidx.core.widget.NestedScrollView>
             </LinearLayout>
 
@@ -590,6 +648,16 @@
                 android:lineSpacingExtra="4dp"
                 android:textColor="#374151"
                 android:textSize="14sp" />
+
+            <!-- Provenance: where the picks came from and how many are shown -->
+            <TextView
+                android:id="@+id/sourceText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:textColor="#9CA3AF"
+                android:textSize="11sp"
+                android:visibility="gone" />
 
             <Button
                 android:id="@+id/clearFiltersButton"
@@ -625,7 +693,7 @@
                 android:id="@+id/compareTabContent"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="#F8F9FA"
+                android:background="@android:color/transparent"
                 android:fillViewport="true"
                 android:visibility="gone">
 
@@ -639,7 +707,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Compare products"
-                        android:textColor="#111827"
+                        android:textColor="?attr/colorOnSurface"
                         android:textSize="20sp"
                         android:textStyle="bold" />
 
@@ -665,7 +733,7 @@
                 android:id="@+id/historyTabContent"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="#F8F9FA"
+                android:background="@android:color/transparent"
                 android:fillViewport="true"
                 android:visibility="gone">
 
@@ -679,7 +747,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Scan history"
-                        android:textColor="#111827"
+                        android:textColor="?attr/colorOnSurface"
                         android:textSize="20sp"
                         android:textStyle="bold" />
 
@@ -702,6 +770,15 @@
             </androidx.core.widget.NestedScrollView>
 
         </FrameLayout>
+
+        <!-- Bottom navigation: Search | Compare | History (thumb zone) -->
+        <com.google.android.material.bottomnavigation.BottomNavigationView
+            android:id="@+id/bottomNav"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#FFFFFF"
+            android:elevation="8dp"
+            app:menu="@menu/bottom_nav_menu" />
     </LinearLayout>
 
     <!-- Sticky results header: appears once the alternates card scrolls into view.

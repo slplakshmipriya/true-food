@@ -1,14 +1,12 @@
 package com.barelabel.app;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
-import android.text.SpannableStringBuilder;
-import android.text.Spanned;
 import android.text.TextUtils;
-import android.text.style.ForegroundColorSpan;
-import android.text.style.StyleSpan;
+import android.view.Gravity;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
@@ -82,6 +80,13 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar progress;
     private TextView statusText, verdictText, flaggedText, ingredientsText;
     private LinearLayout resultCard;
+    private com.barelabel.app.ui.CleanScoreView cleanScoreView;
+    private LinearLayout flaggedList;
+    private androidx.recyclerview.widget.RecyclerView recentsRecycler;
+    private TextView recentsLabel;
+    private com.barelabel.app.ui.RecentsAdapter recentsAdapter;
+    private View skeletonCard;
+    private android.animation.ObjectAnimator skeletonPulse;
 
     // Separate Panels & Expandable Ingredients
     private View ingredientsCard;
@@ -102,7 +107,7 @@ public class MainActivity extends AppCompatActivity {
     private View historyTabContent;
     private com.barelabel.app.ui.HistoryTabController historyTabController;
     private com.barelabel.app.ui.CompareTabController compareTabController;
-    private com.google.android.material.tabs.TabLayout mainTabLayout;
+    private com.google.android.material.bottomnavigation.BottomNavigationView bottomNav;
     private CheckBox verdictCompareBox;
     private ProductResult currentPrimaryResult;
     private final LinkedHashMap<String, ProductResult> comparePicks = new LinkedHashMap<>();
@@ -189,6 +194,24 @@ protected void onCreate(Bundle savedInstanceState) {
     if (scanBarcodeButton != null) {
         scanBarcodeButton.setOnClickListener(v -> openBarcodeScanner());
     }
+    // Scan-first hero: same scanner, bigger target.
+    Button scanHeroButton = findViewById(R.id.scanHeroButton);
+    if (scanHeroButton != null) {
+        scanHeroButton.setOnClickListener(v -> openBarcodeScanner());
+    }
+
+    // Recent scans strip (Search tab): tap a card to re-run that search.
+    if (recentsRecycler != null) {
+        recentsRecycler.setLayoutManager(
+                new androidx.recyclerview.widget.LinearLayoutManager(
+                        this, androidx.recyclerview.widget.LinearLayoutManager.HORIZONTAL,
+                        false));
+        recentsAdapter = new com.barelabel.app.ui.RecentsAdapter(p -> {
+            searchBox.setText(p.displayName());
+            search();
+        });
+        recentsRecycler.setAdapter(recentsAdapter);
+    }
 
     // 4b. Settings (wrench): preferred retailer for Buy links.
     ImageButton settingsButton = findViewById(R.id.settingsButton);
@@ -197,13 +220,13 @@ protected void onCreate(Bundle savedInstanceState) {
     }
 
 setupCategoryFilterPanel();
-    // 4c. Main tabs: Search | Compare | History. Search is the default landing tab.
-    mainTabLayout = findViewById(R.id.mainTabLayout);
-    com.google.android.material.tabs.TabLayout tabLayout = mainTabLayout;
+    maybeShowOnboarding();
+    // 4c. Bottom navigation: Search | Compare | History. Search is the default.
+    bottomNav = findViewById(R.id.bottomNav);
     View searchTabContent = findViewById(R.id.mainRootLayout);
     compareTabContent = findViewById(R.id.compareTabContent);
     historyTabContent = findViewById(R.id.historyTabContent);
-    if (tabLayout != null && searchTabContent != null) {
+    if (bottomNav != null && searchTabContent != null) {
         historyTabController = new com.barelabel.app.ui.HistoryTabController(
                 this, historyTabContent);
         compareTabController = new com.barelabel.app.ui.CompareTabController(
@@ -226,20 +249,13 @@ setupCategoryFilterPanel();
                     }
                 });
         final View searchContent = searchTabContent;
-        tabLayout.addOnTabSelectedListener(
-                new com.google.android.material.tabs.TabLayout.OnTabSelectedListener() {
-                    @Override
-                    public void onTabSelected(
-                            com.google.android.material.tabs.TabLayout.Tab tab) {
-                        showTab(tab.getPosition(), searchContent);
-                    }
-                    @Override
-                    public void onTabUnselected(
-                            com.google.android.material.tabs.TabLayout.Tab tab) {}
-                    @Override
-                    public void onTabReselected(
-                            com.google.android.material.tabs.TabLayout.Tab tab) {}
-                });
+        bottomNav.setOnItemSelectedListener(item -> {
+            int id = item.getItemId();
+            int position = id == R.id.nav_compare ? 1
+                    : id == R.id.nav_history ? 2 : 0;
+            showTab(position, searchContent);
+            return true;
+        });
         showTab(0, searchContent);
     }
 
@@ -271,6 +287,24 @@ setupCategoryFilterPanel();
             boolean saved = saveProductToHistory(p);
             if (saved) AnalyticsTracker.productSaved("alternate");
             return saved;
+        });
+    }
+    if (alternatesController != null) {
+        alternatesController.setAlternateSearchListener(alt -> {
+            if (alt == null) return;
+            // The tapped alternate becomes the next search candidate: exact
+            // GTIN lookup when we have one (same path as a barcode scan),
+            // name search otherwise; then scroll its verdict into view.
+            if (!TextUtils.isEmpty(alt.gtinUpc)) {
+                lookupBarcodeAndSearch(alt.gtinUpc.trim());
+            } else {
+                String q = alt.name == null ? "" : alt.name;
+                if (!TextUtils.isEmpty(alt.brand)) q = q + " (" + alt.brand + ")";
+                searchBox.setText(q);
+                search();
+            }
+            NestedScrollView rootScroll = findViewById(R.id.mainRootLayout);
+            if (rootScroll != null) rootScroll.smoothScrollTo(0, 0);
         });
     }
     // 5. Attach AutoComplete Manager
@@ -338,6 +372,32 @@ setupCategoryFilterPanel();
 }
 
 
+@Override
+protected void onResume() {
+    super.onResume();
+    refreshRecents();
+}
+
+/** Reloads the Recent scans strip from disk (newest first, max 10). */
+private void refreshRecents() {
+    if (recentsAdapter == null) return;
+    new Thread(() -> {
+        List<ScannedProduct> all = ScanHistoryRepository.getAll(this);
+        final List<ScannedProduct> top = all.size() > 10 ? all.subList(0, 10) : all;
+        runOnUiThread(() -> {
+            recentsAdapter.setItems(top);
+            boolean has = !top.isEmpty();
+            if (recentsRecycler != null) {
+                recentsRecycler.setVisibility(has ? View.VISIBLE : View.GONE);
+            }
+            if (recentsLabel != null) {
+                recentsLabel.setVisibility(has ? View.VISIBLE : View.GONE);
+            }
+        });
+    }).start();
+}
+
+
     private void bindViews() {
         searchBox = findViewById(R.id.searchBox);
         searchButton = findViewById(R.id.searchButton);
@@ -347,6 +407,11 @@ setupCategoryFilterPanel();
         flaggedText = findViewById(R.id.flaggedText);
         ingredientsText = findViewById(R.id.ingredientsText);
         resultCard = findViewById(R.id.resultCard);
+        cleanScoreView = findViewById(R.id.cleanScoreView);
+        flaggedList = findViewById(R.id.flaggedList);
+        recentsRecycler = findViewById(R.id.recentsRecycler);
+        recentsLabel = findViewById(R.id.recentsLabel);
+        skeletonCard = findViewById(R.id.skeletonCard);
 
         productTitleText = findViewById(R.id.productTitleText);
         productImageView = findViewById(R.id.productImageView);
@@ -434,6 +499,8 @@ setupCategoryFilterPanel();
         resultCard.setVisibility(LinearLayout.GONE);
         alternatesController.resetToggle();
         statusText.setText("Searching USDA FoodData Central…");
+        statusText.setVisibility(View.VISIBLE);
+        setSkeletonVisible(true);
         ingredientsText.setText("");
 
         new Thread(() -> {
@@ -447,6 +514,11 @@ setupCategoryFilterPanel();
                 ProductResult primaryResult = fetchedById
                         ? usdaApiClient.fetchFoodById(fdcId)
                         : usdaApiClient.searchPrimary(product);
+                runOnUiThread(() -> {
+                    if (generation == searchGeneration) {
+                        statusText.setText("Checking ingredients…");
+                    }
+                });
 
                 // 2. Unbranded search intent: when the query does not name the product's
                 //    brand, treat it as a category search and always show clean choices.
@@ -474,6 +546,11 @@ setupCategoryFilterPanel();
                 if (TextUtils.isEmpty(foodType)) foodType = "Uncategorized";
 
                 // 4. Fetch clean candidates (+ which flagged categories blocked the rest)
+                runOnUiThread(() -> {
+                    if (generation == searchGeneration) {
+                        statusText.setText("Finding clean alternates…");
+                    }
+                });
                 AlternateSearchResult altSearch = alternateFinder.findCleanAlternates(
                         foodType, apiCategory, categoryIntent, primaryResult, product);
                 List<ProductResult> rawAlternates = altSearch.alternates;
@@ -504,6 +581,7 @@ setupCategoryFilterPanel();
                     // the newer search's in-flight UI state.
                     if (generation != searchGeneration) return;
                     progress.setVisibility(ProgressBar.GONE);
+                    setSkeletonVisible(false);
                     searchButton.setEnabled(true);
                 });
             }
@@ -559,6 +637,8 @@ setupCategoryFilterPanel();
                             boolean fetchedById) {
         currentPrimaryResult = result;
         clearComparePicks();
+        if (statusText != null) statusText.setVisibility(View.GONE);
+        setSkeletonVisible(false);
     // Unbranded category search (e.g. "cookies"): the top hit is just one random
     // branded product in the category, not what the user asked about, so hide the
     // primary verdict card and show only the clean-choices card.
@@ -566,11 +646,17 @@ setupCategoryFilterPanel();
         if (resultCard != null) resultCard.setVisibility(View.GONE);
         alternatesController.show(foodType, true, true, flaggedCategories,
                 countActiveFilters(), reliefCounts);
+        updateSourceLine();
         updateStickyBar();
         return;
     }
 
     resultCard.setVisibility(View.VISIBLE);
+    // Verdict reveal: quick fade + rise so the verdict lands as a moment.
+    resultCard.setAlpha(0f);
+    resultCard.setTranslationY(dp(12));
+    resultCard.animate().alpha(1f).translationY(0f).setDuration(250).start();
+    bindFlaggedList(null);
 
     int colorClean = C_GREEN_800;
     int colorDirty = C_RED_800;
@@ -597,6 +683,9 @@ setupCategoryFilterPanel();
 
     // Handle case where product was not found
     if (result == null || !result.found) {
+        if (cleanScoreView != null) {
+            cleanScoreView.setScore(CleanScoreCalculator.UNAVAILABLE);
+        }
         if (matchNoticeText != null) matchNoticeText.setVisibility(View.GONE);
         if (productTitleText != null) productTitleText.setText("No Matching Product");
         if (productImageView != null) productImageView.setVisibility(View.GONE);
@@ -666,6 +755,9 @@ setupCategoryFilterPanel();
 
     // Handle missing/empty ingredients
     if (TextUtils.isEmpty(result.ingredients.trim())) {
+        if (cleanScoreView != null) {
+            cleanScoreView.setScore(CleanScoreCalculator.UNAVAILABLE);
+        }
         resultCard.setBackgroundResource(R.drawable.verdict_dirty);
         verdictText.setText("? INGREDIENTS UNAVAILABLE");
         verdictText.setTextColor(colorMuted);
@@ -678,6 +770,16 @@ setupCategoryFilterPanel();
     }
 
     boolean isClean = result.flagged == null || result.flagged.isEmpty();
+
+    // Clean Score next to the binary verdict (degrees for comparisons).
+    if (cleanScoreView != null) {
+        int flaggedCount = result.flagged == null ? 0 : result.flagged.size();
+        int categoryCount = (result.matchResult != null
+                && result.matchResult.categoryMap != null)
+                ? result.matchResult.categoryMap.size() : 0;
+        cleanScoreView.setScore(CleanScoreCalculator.score(
+                true, flaggedCount, categoryCount));
+    }
 
     // Persist this scan to history (deduplicated, newest-first). Disk I/O off the UI thread.
     final ProductResult scannedResult = result;
@@ -710,41 +812,16 @@ setupCategoryFilterPanel();
         verdictText.setTextColor(colorClean);
         if (flaggedTitle != null) flaggedTitle.setVisibility(View.GONE);
         if (flaggedText != null) flaggedText.setVisibility(View.GONE);
+        bindFlaggedList(null);
     } else {
         resultCard.setBackgroundResource(R.drawable.verdict_dirty);
         verdictText.setText("⚠ DIRTY INGREDIENTS");
         verdictText.setTextColor(colorDirty);
         if (flaggedTitle != null) flaggedTitle.setVisibility(View.VISIBLE);
-        if (flaggedText != null) flaggedText.setVisibility(View.VISIBLE);
+        if (flaggedText != null) flaggedText.setVisibility(View.GONE);
 
-        // Styled Category Grouping Output
-        if (result.matchResult != null && result.matchResult.hasMatches()) {
-            SpannableStringBuilder builder = new SpannableStringBuilder();
-
-            for (java.util.Map.Entry<String, List<String>> entry : result.matchResult.categoryMap.entrySet()) {
-                int startCategory = builder.length();
-
-                builder.append("► ").append(entry.getKey().toUpperCase(Locale.US)).append("\n");
-                int endCategory = builder.length();
-
-                builder.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
-                        startCategory, endCategory, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                builder.setSpan(new android.text.style.ForegroundColorSpan(C_RED_900),
-                        startCategory, endCategory, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-
-                for (String matchedIngredient : entry.getValue()) {
-                    builder.append("   • ").append(matchedIngredient).append("\n");
-                }
-                builder.append("\n");
-            }
-            flaggedText.setText(builder.toString().trim());
-        } else {
-            StringBuilder b = new StringBuilder();
-            for (String f : result.flagged) {
-                b.append("• ").append(f).append("\n");
-            }
-            flaggedText.setText(b.toString().trim());
-        }
+        // Expandable per-ingredient rows with plain-English reasons.
+        bindFlaggedList(result);
     }
 
     // 3. Verdict chips: per-category pass/fail so the verdict shows its work.
@@ -753,6 +830,7 @@ setupCategoryFilterPanel();
     // 4. Clean Alternates Section
     alternatesController.show(foodType, categoryIntent, isClean, flaggedCategories,
             countActiveFilters(), reliefCounts);
+    updateSourceLine();
     updateStickyBar();
 }
 
@@ -845,6 +923,79 @@ private void updateAffiliateDisclosure(ProductResult result,
 }
 
 /**
+ * One expandable row per flagged ingredient: tap to reveal the plain-English
+ * reason for its category. Replaces the old static grouped text dump.
+ */
+private void bindFlaggedList(ProductResult result) {
+    if (flaggedList == null) return;
+    flaggedList.removeAllViews();
+    if (result == null || result.matchResult == null
+            || !result.matchResult.hasMatches()) {
+        flaggedList.setVisibility(View.GONE);
+        return;
+    }
+    boolean any = false;
+    for (Map.Entry<String, List<String>> entry : result.matchResult.categoryMap.entrySet()) {
+        String category = entry.getKey();
+        for (String ingredient : entry.getValue()) {
+            flaggedList.addView(buildFlaggedRow(ingredient, category));
+            any = true;
+        }
+    }
+    flaggedList.setVisibility(any ? View.VISIBLE : View.GONE);
+}
+
+/** A single tappable flagged-ingredient row with a collapsible reason. */
+private View buildFlaggedRow(final String ingredient, final String category) {
+    LinearLayout row = new LinearLayout(this);
+    row.setOrientation(LinearLayout.VERTICAL);
+    row.setPadding(dp(12), dp(8), dp(12), dp(8));
+    row.setBackgroundResource(R.drawable.bg_search_box);
+    LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+    rowParams.topMargin = dp(6);
+    row.setLayoutParams(rowParams);
+    row.setClickable(true);
+    row.setFocusable(true);
+
+    LinearLayout header = new LinearLayout(this);
+    header.setOrientation(LinearLayout.HORIZONTAL);
+    header.setGravity(Gravity.CENTER_VERTICAL);
+
+    TextView name = new TextView(this);
+    name.setLayoutParams(new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+    name.setText("⚠ " + ingredient);
+    name.setTextSize(14f);
+    name.setTypeface(name.getTypeface(), Typeface.BOLD);
+    name.setTextColor(C_RED_900);
+    header.addView(name);
+
+    final TextView chevron = new TextView(this);
+    chevron.setText("›");
+    chevron.setTextSize(18f);
+    chevron.setTextColor(C_GRAY_600);
+    header.addView(chevron);
+    row.addView(header);
+
+    final TextView reason = new TextView(this);
+    reason.setText(IngredientExplainer.reasonFor(category)
+            + "\nFlagged under: " + category);
+    reason.setTextSize(13f);
+    reason.setTextColor(C_GRAY_600);
+    reason.setPadding(0, dp(4), 0, 0);
+    reason.setVisibility(View.GONE);
+    row.addView(reason);
+
+    row.setOnClickListener(v -> {
+        boolean expand = reason.getVisibility() != View.VISIBLE;
+        reason.setVisibility(expand ? View.VISIBLE : View.GONE);
+        chevron.setText(expand ? "⌄" : "›");
+    });
+    return row;
+}
+
+/**
  * Per-category pass/fail chips under the verdict: green "✓ No X" for enabled
  * categories with no flagged match, red "⚠ X" for the ones that fired.
  */
@@ -880,6 +1031,40 @@ private void bindVerdictChips(ProductResult result) {
         verdictChipsContainer.addView(chip);
     }
     verdictChipsContainer.setVisibility(any ? View.VISIBLE : View.GONE);
+}
+
+/** Shows/hides the pulsing skeleton card displayed while a search runs. */
+private void setSkeletonVisible(boolean show) {
+    if (skeletonCard == null) return;
+    if (skeletonPulse != null) {
+        skeletonPulse.cancel();
+        skeletonPulse = null;
+    }
+    skeletonCard.setVisibility(show ? View.VISIBLE : View.GONE);
+    if (show) {
+        skeletonPulse = android.animation.ObjectAnimator.ofFloat(
+                skeletonCard, "alpha", 0.35f, 1f);
+        skeletonPulse.setDuration(700);
+        skeletonPulse.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+        skeletonPulse.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+        skeletonPulse.start();
+    } else {
+        skeletonCard.setAlpha(1f);
+    }
+}
+
+/** "USDA FoodData Central • N clean picks shown" provenance line. */
+private void updateSourceLine() {
+    TextView sourceText = findViewById(R.id.sourceText);
+    if (sourceText == null) return;
+    int shown = alternatesController.getExactCount()
+            + alternatesController.getMoreCount();
+    if (!alternatesController.isCardShowing() || shown == 0) {
+        sourceText.setVisibility(View.GONE);
+        return;
+    }
+    sourceText.setText("USDA FoodData Central • " + shown + " clean picks shown");
+    sourceText.setVisibility(View.VISIBLE);
 }
 
 /** Refreshes the sticky results bar from the alternates controller's state. */
@@ -975,12 +1160,12 @@ private void openCompareForPicks() {
     compareTabController.compareExternal(
             ScannedProduct.fromProductResult(picked.get(0)),
             ScannedProduct.fromProductResult(picked.get(1)));
-    if (mainTabLayout != null) {
-        if (mainTabLayout.getSelectedTabPosition() == 1) {
+    if (bottomNav != null) {
+        if (bottomNav.getSelectedItemId() == R.id.nav_compare) {
             compareTabController.refresh();
         } else {
-            com.google.android.material.tabs.TabLayout.Tab tab = mainTabLayout.getTabAt(1);
-            if (tab != null) tab.select();
+            // Selecting fires the nav listener -> showTab(1) -> refresh.
+            bottomNav.setSelectedItemId(R.id.nav_compare);
         }
     }
 }
@@ -1018,6 +1203,48 @@ private void showFullIngredientsDialog(ProductResult product) {
         title += " (" + product.brand + ")";
     }
     ProductDetailDialog.show(this, title, product.ingredients, product.flagged);
+}
+
+
+
+private void maybeShowOnboarding() {
+    final SharedPreferences prefs =
+            getSharedPreferences("barelabel_onboarding", MODE_PRIVATE);
+    if (prefs.getBoolean("onboarded_v1", false)) return;
+
+    final List<String> categories = getFlaggedCategories();
+    final List<AvoidListPresets.Preset> presets = AvoidListPresets.presets();
+    CharSequence[] labels = new CharSequence[presets.size()];
+    for (int i = 0; i < presets.size(); i++) {
+        AvoidListPresets.Preset p = presets.get(i);
+        labels[i] = p.label + " — " + p.description;
+    }
+    new AlertDialog.Builder(this)
+            .setTitle("What do you avoid?")
+            .setSingleChoiceItems(labels, 0, null)
+            .setPositiveButton("Save", (dialog, which) -> {
+                int selected = ((AlertDialog) dialog).getListView()
+                        .getCheckedItemPosition();
+                applyOnboardingPreset(
+                        presets.get(Math.max(0, selected)), categories);
+                prefs.edit().putBoolean("onboarded_v1", true).apply();
+            })
+            .setNegativeButton("Skip", (dialog, which) ->
+                    prefs.edit().putBoolean("onboarded_v1", true).apply())
+            .show();
+}
+
+/** Applies a first-run preset: stores the category toggles and rebuilds the filter panel. */
+private void applyOnboardingPreset(AvoidListPresets.Preset preset,
+                                   List<String> categories) {
+    Set<String> enabled = AvoidListPresets.enabledFor(preset, categories);
+    for (String category : categories) {
+        boolean on = enabled.contains(category);
+        CategoryPreferenceManager.setCategoryEnabled(this, category, on);
+        AnalyticsTracker.categoryToggled(category, on);
+    }
+    setupCategoryFilterPanel();
+    updateFilterSummary();
 }
 
 
