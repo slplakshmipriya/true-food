@@ -86,17 +86,27 @@ public class ShareLinksTest {
     public void shareText_clean() {
         String text = ShareLinks.shareText("Dave's Bread", "Dave's Inc.",
                 true, 85, 0, "https://barelabel.app/p/012345678905");
-        assertTrue(text.startsWith("Dave's Bread\nby Dave's Inc.\n\n"));
-        assertTrue(text.contains("✓ CLEAN · 85/100"));
+        assertTrue(text.startsWith("*Dave's Bread*\n"));
+        assertTrue(text.contains("Dave's Inc. · ✓ CLEAN · 85/100"));
         assertTrue(text.contains("https://barelabel.app/p/012345678905"));
-        assertTrue(text.contains("via BareLabel"));
+        assertTrue(!text.contains("via BareLabel"));
     }
 
     @Test
     public void shareText_titleCasesAllCapsName() {
         String text = ShareLinks.shareText("MULTIGRAIN ORGANIC BREAD, MULTIGRAIN",
                 "SIMPLY BALANCED", true, 100, 0, "https://barelabel.app/p/1");
-        assertTrue(text.startsWith("Multigrain Organic Bread, Multigrain\n"));
+        assertTrue(text.startsWith("*Multigrain Organic Bread, Multigrain*\n"));
+        assertTrue(text.contains("Simply Balanced · ✓ CLEAN · 100/100"));
+    }
+
+    @Test
+    public void shareText_compactTwoLines() {
+        String text = ShareLinks.shareText("Chips", null,
+                false, 40, 3, "https://barelabel.app/p/012345678905");
+        String[] parts = text.split("\n\n");
+        assertEquals(2, parts.length);
+        assertTrue(parts[0].contains("⚠ DIRTY · 3 flagged ingredients · 40/100"));
     }
 
     @Test

@@ -115,18 +115,19 @@ public final class ShareLinks {
     }
 
     /**
-     * Human-readable share message for the system share sheet. Airy layout —
-     * name, brand, verdict, link each get their own breathing room — so it
-     * reads well in chat apps even before the link preview unfurls.
+     * Human-readable share message for the system share sheet. Compact and
+     * scannable: bold product name (WhatsApp *...*), one context line
+     * (brand · verdict · score), then the link. Reads well even where link
+     * previews don't render; "via BareLabel" is dropped as redundant with
+     * the barelabel.app domain in the URL.
      */
     public static String shareText(String name, String brand, boolean isClean,
                                    int score, int flaggedCount, String url) {
         StringBuilder sb = new StringBuilder();
-        sb.append(displayName(name));
+        sb.append('*').append(displayName(name)).append('*').append('\n');
         if (brand != null && !brand.isEmpty()) {
-            sb.append("\nby ").append(brand);
+            sb.append(displayName(brand)).append(" \u00b7 ");
         }
-        sb.append("\n\n");
         if (isClean) {
             sb.append("\u2713 CLEAN");
         } else {
@@ -138,7 +139,6 @@ public final class ShareLinks {
             sb.append(" \u00b7 ").append(score).append("/100");
         }
         sb.append("\n\n").append(url);
-        sb.append("\nvia BareLabel");
         return sb.toString();
     }
 
