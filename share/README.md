@@ -7,8 +7,13 @@ Tiny Cloud Run service behind `https://barelabel.app`. Serves:
 - `/p/{gtin}` — Open Graph preview page. Chat apps (WhatsApp, Messages)
   unfurl the product name, verdict, and photo from its meta tags.
   Product facts arrive as query params from the app
-  (`?v=clean&score=85&flagged=0&n=...&img=...`), so this service holds
-  no API keys and stores nothing.
+  (`?v=clean&score=85&flagged=0&n=...&img=...&m=...`), so this service holds
+  no API keys and stores nothing. `img` is the product photo URL (the app's
+  cached Open Food Facts image); when absent the backend fetches it from
+  Open Food Facts itself (free, keyless, cached 24h). `m` is a comma-separated
+  list of retailer names carrying the item — rendered as "Available at"
+  chips linking to each merchant's site search (exact per-offer deep links
+  stay in the app, where the UPCitemdb lookup and affiliate logic live).
 
 ## Prerequisites
 
