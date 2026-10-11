@@ -49,6 +49,26 @@ public class HistoryTabController {
             }
 
             @Override
+            public void onBuyClicked(ScannedProduct product) {
+                // Rebuild a lightweight ProductResult so the Buy flow
+                // (affiliate-aware, same as the search results page) works
+                // from a persisted history entry.
+                com.barelabel.app.model.ProductResult pr =
+                        new com.barelabel.app.model.ProductResult();
+                pr.found = true;
+                pr.name = product.name;
+                pr.brand = product.brand;
+                pr.ingredients = product.ingredients;
+                pr.gtinUpc = product.gtin;
+                com.barelabel.app.images.ProductImageResolver.OffProductInfo off =
+                        com.barelabel.app.images.ProductImageResolver.getCached(
+                                activity, pr.gtinUpc == null ? "" : pr.gtinUpc);
+                com.barelabel.app.AnalyticsTracker.buyTapped("history");
+                com.barelabel.app.affiliate.AffiliateNavigator.openBuy(
+                        activity, pr, off, "history");
+            }
+
+            @Override
             public void onSelectionChanged(int selectedCount) {
                 // Selection mode is not used in the tab UI.
             }

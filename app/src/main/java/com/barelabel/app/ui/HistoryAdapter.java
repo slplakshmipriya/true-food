@@ -32,6 +32,7 @@ public class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHold
     public interface Listener {
         void onItemClicked(ScannedProduct product);
         void onDeleteClicked(ScannedProduct product);
+        void onBuyClicked(ScannedProduct product);
         void onSelectionChanged(int selectedCount);
     }
 
@@ -141,6 +142,34 @@ public class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHold
 
         h.deleteButton.setOnClickListener(v -> listener.onDeleteClicked(p));
 
+        // Retailer offers + Buy, mirroring the search-results alternate rows.
+        // Views are reset every bind (recycled holders); offers resolve async.
+        h.offerRow.setTag(null);
+        h.price.setVisibility(View.GONE);
+        h.strip.removeAllViews();
+        h.strip.setVisibility(View.GONE);
+        h.offerRow.setVisibility(View.GONE);
+        h.buyButton.setVisibility(selectionMode ? View.GONE : View.VISIBLE);
+        h.buyButton.setOnClickListener(v -> listener.onBuyClicked(p));
+
+        final String gtin = p.gtin == null ? "" : p.gtin.trim();
+        if (!gtin.isEmpty()) {
+            final String stripTag = "offers:" + gtin;
+            h.offerRow.setTag(stripTag);
+            com.barelabel.app.pricing.PriceFetcher.fetchOffers(gtin, offers -> {
+                if (offers == null || offers.isEmpty()) return;
+                // Holder may have been rebound for another product since.
+                if (!TextUtils.equals(String.valueOf(h.offerRow.getTag()), stripTag)) return;
+                int cur = h.getAdapterPosition();
+                if (cur == RecyclerView.NO_POSITION) return;
+                if (cur >= items.size() || !items.get(cur).id.equals(p.id)) return;
+                h.price.setText(offers.get(0).priceText());
+                h.price.setVisibility(View.VISIBLE);
+                RetailerOffers.bindStrip(context, h.strip, offers, p.displayName());
+                h.offerRow.setVisibility(View.VISIBLE);
+            });
+        }
+
         h.itemView.setOnClickListener(v -> {
             if (selectionMode) {
                 if (!hasIngredients) {
@@ -161,9 +190,11 @@ public class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHold
     }
 
     static class ViewHolder extends RecyclerView.ViewHolder {
-        TextView name, subLine, pill;
-        ImageButton deleteButton;
+        TextView name, subLine, pill, price;
+        ImageButton deleteButton, buyButton;
         CheckBox checkBox;
+        View offerRow;
+        android.widget.LinearLayout strip;
 
         ViewHolder(View itemView) {
             super(itemView);
@@ -172,6 +203,10 @@ public class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHold
             pill = itemView.findViewById(R.id.historyVerdictPill);
             deleteButton = itemView.findViewById(R.id.historyDeleteButton);
             checkBox = itemView.findViewById(R.id.historySelectCheckBox);
+            offerRow = itemView.findViewById(R.id.historyOfferRow);
+            price = itemView.findViewById(R.id.historyPrice);
+            strip = itemView.findViewById(R.id.historyRetailerStrip);
+            buyButton = itemView.findViewById(R.id.historyBuyButton);
         }
     }
 

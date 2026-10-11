@@ -628,7 +628,6 @@ public class AlternatesCardController {
     /** How many rows at the top of the Exact matches stack get price/offers. */
     private static final int OFFERS_ROW_COUNT = 5;
     /** Max retailer logos shown per row; the rest collapse into "+N". */
-    private static final int MAX_RETAILER_LOGOS = 6;
 
     private void bindStack(View panel, TextView panelTitle,
                            com.google.android.flexbox.FlexboxLayout list,
@@ -698,7 +697,7 @@ public class AlternatesCardController {
                         android.widget.LinearLayout stripView = stripRef.get();
                         if (stripView != null
                                 && TextUtils.equals(String.valueOf(stripView.getTag()), stripTag)) {
-                            bindRetailerStrip(stripView, offers, productName);
+                            RetailerOffers.bindStrip(activity, stripView, offers, productName);
                         }
                     });
                 }
@@ -735,155 +734,6 @@ public class AlternatesCardController {
         return divider;
     }
 
-    /**
-     * Fills the retailer strip: one logo chip per store carrying the item
-     * (cheapest first, logos only) — tapping a chip opens that store's
-     * product page. Capped so the strip never overflows the card; the
-     * remainder collapses into a "+N" chip.
-     */
-    private void bindRetailerStrip(android.widget.LinearLayout strip,
-            java.util.List<com.barelabel.app.pricing.UpcOffers.Offer> offers,
-            String productName) {
-        Context ctx = activity;
-        strip.removeAllViews();
-        if (offers == null || offers.isEmpty()) {
-            strip.setVisibility(View.GONE);
-            return;
-        }
-        strip.setVisibility(View.VISIBLE);
-        int shown = Math.min(offers.size(), MAX_RETAILER_LOGOS);
-        for (int i = 0; i < shown; i++) {
-            final com.barelabel.app.pricing.UpcOffers.Offer offer = offers.get(i);
-            android.widget.ImageView logo = new android.widget.ImageView(ctx);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(26), dp(26));
-            lp.setMarginEnd(dp(6));
-            logo.setLayoutParams(lp);
-            logo.setPadding(dp(3), dp(3), dp(3), dp(3));
-            android.graphics.drawable.GradientDrawable chipBg =
-                    new android.graphics.drawable.GradientDrawable();
-            chipBg.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
-            chipBg.setCornerRadius(dp(6));
-            chipBg.setColor(C_WHITE);
-            logo.setBackground(chipBg);
-            logo.setContentDescription(offer.merchant);
-            RetailerLogos.loadInto(ctx, logo, offer.merchant, offer.domain);
-            if (!offer.link.isEmpty() && offer.link.startsWith("http")) {
-                logo.setClickable(true);
-                final String link = offer.link;
-                final String merchant = offer.merchant;
-                final String domain = offer.domain;
-                logo.setOnClickListener(v -> openOfferLink(link, productName, merchant, domain));
-            }
-            strip.addView(logo);
-        }
-        if (offers.size() > shown) {
-            TextView more = new TextView(ctx);
-            more.setText("+" + (offers.size() - shown));
-            more.setTextSize(10f);
-            more.setTextColor(C_GRAY_500);
-            strip.addView(more);
-        }
-    }
-
-    /**
-     * Opens a retailer's product page in a Custom Tab (URL bar visible).
-     * UPCitemdb offer URLs rot — products get delisted, merchants die — and
-     * a Custom Tab can't report a 404, so the URL is probed first on a
-     * background thread. A hard-dead page (404/410/DNS/timeout) falls back
-     * to a merchant-scoped search for the product; anything ambiguous
-     * (bot-blocked 403s, 5xx) opens the link as-is rather than stranding
-     * the user.
-     */
-    private void openOfferLink(String url, String productName,
-                               String merchant, String domain) {
-        new Thread(() -> {
-            String target = url;
-            boolean dead = linkLooksDead(url);
-            if (dead) {
-                String q = (!domain.isEmpty() ? "site:" + domain + " " : "")
-                        + productName
-                        + (merchant.isEmpty() ? "" : " " + merchant);
-                try {
-                    target = "https://www.google.com/search?q="
-                            + java.net.URLEncoder.encode(q.trim(), "UTF-8");
-                } catch (Exception ignored) {
-                    target = url;
-                    dead = false;
-                }
-            }
-            final String open = target;
-            final boolean showFallbackNote = dead;
-            android.app.Activity act = activity;
-            if (act == null) return;
-            act.runOnUiThread(() -> {
-                if (showFallbackNote) {
-                    android.widget.Toast.makeText(act,
-                            "That product page is gone — showing search results instead.",
-                            android.widget.Toast.LENGTH_SHORT).show();
-                }
-                launchUrl(open);
-            });
-        }).start();
-    }
-
-    /** True only on a hard-dead page: 404/410, unresolvable host, or timeout. */
-    private static boolean linkLooksDead(String url) {
-        java.net.HttpURLConnection conn = null;
-        try {
-            conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
-            conn.setRequestMethod("HEAD");
-            conn.setConnectTimeout(6000);
-            conn.setReadTimeout(6000);
-            conn.setInstanceFollowRedirects(true);
-            conn.setRequestProperty("User-Agent",
-                    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
-                            + "(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36");
-            int code = conn.getResponseCode();
-            if (code == 405 || code == 501) {
-                // HEAD not implemented: retry as GET, headers only.
-                conn.disconnect();
-                conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(6000);
-                conn.setReadTimeout(6000);
-                conn.setInstanceFollowRedirects(true);
-                conn.setRequestProperty("User-Agent",
-                        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
-                                + "(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36");
-                code = conn.getResponseCode();
-            }
-            return code == 404 || code == 410;
-        } catch (java.net.UnknownHostException | java.net.SocketTimeoutException e) {
-            return true;
-        } catch (Exception e) {
-            return false;
-        } finally {
-            if (conn != null) conn.disconnect();
-        }
-    }
-
-    /** Opens a URL in a Custom Tab, falling back to a plain VIEW intent. */
-    private void launchUrl(String url) {
-        try {
-            new androidx.browser.customtabs.CustomTabsIntent.Builder()
-                    .setShowTitle(true)
-                    .build()
-                    .launchUrl(activity, android.net.Uri.parse(url));
-        } catch (Exception e) {
-            try {
-                activity.startActivity(new android.content.Intent(
-                        android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)));
-            } catch (Exception ignored) {
-                // No browser available: the logo stays a passive indicator.
-            }
-        }
-    }
-
-    /**
-     * One tappable result row: bold name / gray brand / clean-summary meta line,
-     * expanding inline to the full ingredient list (superior ingredients
-     * highlighted) plus a Buy link.
-     */
     private View buildRowView(AlternateRanker.RankedProduct item) {
         ProductResult alt = item.product;
         Context ctx = activity;
