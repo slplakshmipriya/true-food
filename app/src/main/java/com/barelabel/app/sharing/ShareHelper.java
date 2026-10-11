@@ -6,6 +6,11 @@ import android.content.Intent;
 import com.barelabel.app.CleanScoreCalculator;
 import com.barelabel.app.images.ProductImageResolver;
 import com.barelabel.app.model.ProductResult;
+import com.barelabel.app.pricing.PriceFetcher;
+import com.barelabel.app.pricing.UpcOffers;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Fires the system share sheet for a product. Share text and the deep link
@@ -39,9 +44,27 @@ public final class ShareHelper {
             }
         }
 
+        // Best-effort retailer hints: merchants already resolved for this
+        // GTIN (e.g. by the alternate rows). Cache-only — sharing never
+        // waits on the network.
+        List<String> merchants = null;
+        if (product.gtinUpc != null && !product.gtinUpc.isEmpty()) {
+            List<UpcOffers.Offer> offers = PriceFetcher.getCached(product.gtinUpc);
+            if (offers != null && !offers.isEmpty()) {
+                merchants = new ArrayList<>();
+                for (int i = 0; i < Math.min(4, offers.size()); i++) {
+                    String m = offers.get(i).merchant;
+                    if (m != null && !m.trim().isEmpty()) {
+                        merchants.add(m.trim());
+                    }
+                }
+                if (merchants.isEmpty()) merchants = null;
+            }
+        }
+
         String url = (product.gtinUpc != null && product.gtinUpc.matches("[0-9]{8,14}"))
                 ? ShareLinks.productUrl(product.gtinUpc, isClean, score,
-                        flaggedCount, product.name, imageUrl)
+                        flaggedCount, product.name, imageUrl, merchants)
                 : ShareLinks.PLAY_STORE_URL;
 
         String text = ShareLinks.shareText(

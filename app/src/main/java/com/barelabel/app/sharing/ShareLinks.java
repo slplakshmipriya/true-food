@@ -35,46 +35,109 @@ public final class ShareLinks {
      * @param isClean     verdict to show in the preview
      * @param score       Clean Score 0-100, or -1 when unavailable
      * @param flaggedCount number of flagged ingredients
-     * @param name        product display name (may be null)
+     * @param name        product display name (may be null; ALL-CAPS names
+     *                    are title-cased for the preview title)
      * @param imageUrl    product image URL (may be null)
+     * @param merchants   retailer names carrying the item, cheapest first
+     *                    (may be null; backend renders "Available at" chips)
      */
     public static String productUrl(String gtin, boolean isClean, int score,
-                                    int flaggedCount, String name, String imageUrl) {
+                                    int flaggedCount, String name,
+                                    String imageUrl, java.util.List<String> merchants) {
         StringBuilder sb = new StringBuilder(productUrl(gtin));
         sb.append("?v=").append(isClean ? "clean" : "dirty");
         sb.append("&score=").append(score);
         sb.append("&flagged=").append(Math.max(0, flaggedCount));
         if (name != null && !name.isEmpty()) {
-            sb.append("&n=").append(encode(name));
+            sb.append("&n=").append(encode(displayName(name)));
         }
         if (imageUrl != null && !imageUrl.isEmpty()) {
             sb.append("&img=").append(encode(imageUrl));
+        }
+        if (merchants != null && !merchants.isEmpty()) {
+            StringBuilder joined = new StringBuilder();
+            for (String m : merchants) {
+                if (m == null) continue;
+                String t = m.trim();
+                if (t.isEmpty() || t.contains(",")) continue;
+                if (joined.length() > 0) joined.append(',');
+                joined.append(t);
+            }
+            if (joined.length() > 0) {
+                sb.append("&m=").append(encode(joined.toString()));
+            }
+        }
+        return sb.toString();
+    }
+
+    /** Variant without retailer hints. */
+    public static String productUrl(String gtin, boolean isClean, int score,
+                                    int flaggedCount, String name,
+                                    String imageUrl) {
+        return productUrl(gtin, isClean, score, flaggedCount, name, imageUrl,
+                null);
+    }
+
+    /**
+     * Display-friendly product name: title-cases ALL-CAPS names (the common
+     * USDA/OFF form) and leaves mixed-case names untouched, so "McDonald's"
+     * never becomes "Mcdonald's". Null/empty becomes "Unknown product".
+     */
+    public static String displayName(String name) {
+        if (name == null || name.isEmpty()) return "Unknown product";
+        boolean allCaps = true;
+        boolean hasLetter = false;
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (Character.isLetter(c)) {
+                hasLetter = true;
+                if (Character.isLowerCase(c)) {
+                    allCaps = false;
+                    break;
+                }
+            }
+        }
+        if (!allCaps || !hasLetter) return name;
+        StringBuilder sb = new StringBuilder(name.length());
+        boolean capNext = true;
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (Character.isLetter(c)) {
+                sb.append(capNext ? Character.toUpperCase(c)
+                        : Character.toLowerCase(c));
+                capNext = false;
+            } else {
+                sb.append(c);
+                capNext = true;
+            }
         }
         return sb.toString();
     }
 
     /**
-     * Human-readable share message for the system share sheet. Carries the
-     * verdict so the text is useful even where link previews don't render.
+     * Human-readable share message for the system share sheet. Airy layout —
+     * name, brand, verdict, link each get their own breathing room — so it
+     * reads well in chat apps even before the link preview unfurls.
      */
     public static String shareText(String name, String brand, boolean isClean,
                                    int score, int flaggedCount, String url) {
         StringBuilder sb = new StringBuilder();
-        sb.append(name == null || name.isEmpty() ? "Unknown product" : name);
+        sb.append(displayName(name));
         if (brand != null && !brand.isEmpty()) {
-            sb.append(" (").append(brand).append(")");
+            sb.append("\nby ").append(brand);
         }
-        sb.append('\n');
+        sb.append("\n\n");
         if (isClean) {
             sb.append("\u2713 CLEAN");
         } else {
-            sb.append("\u26a0 DIRTY \u2014 ").append(flaggedCount)
-              .append(flaggedCount == 1 ? " flagged ingredient" : " flagged ingredients");
+            sb.append("\u26a0 DIRTY \u00b7 ").append(flaggedCount)
+              .append(flaggedCount == 1 ? " flagged ingredient"
+                      : " flagged ingredients");
         }
         if (score >= 0) {
-            sb.append(" (Clean Score ").append(score).append("/100)");
+            sb.append(" \u00b7 ").append(score).append("/100");
         }
-        sb.append('\n').append(url);
+        sb.append("\n\n").append(url);
         sb.append("\nvia BareLabel");
         return sb.toString();
     }

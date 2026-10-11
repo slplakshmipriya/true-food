@@ -86,11 +86,17 @@ public class ShareLinksTest {
     public void shareText_clean() {
         String text = ShareLinks.shareText("Dave's Bread", "Dave's Inc.",
                 true, 85, 0, "https://barelabel.app/p/012345678905");
-        assertTrue(text.contains("Dave's Bread (Dave's Inc.)"));
-        assertTrue(text.contains("CLEAN"));
-        assertTrue(text.contains("85/100"));
+        assertTrue(text.startsWith("Dave's Bread\nby Dave's Inc.\n\n"));
+        assertTrue(text.contains("✓ CLEAN · 85/100"));
         assertTrue(text.contains("https://barelabel.app/p/012345678905"));
         assertTrue(text.contains("via BareLabel"));
+    }
+
+    @Test
+    public void shareText_titleCasesAllCapsName() {
+        String text = ShareLinks.shareText("MULTIGRAIN ORGANIC BREAD, MULTIGRAIN",
+                "SIMPLY BALANCED", true, 100, 0, "https://barelabel.app/p/1");
+        assertTrue(text.startsWith("Multigrain Organic Bread, Multigrain\n"));
     }
 
     @Test
@@ -109,6 +115,48 @@ public class ShareLinksTest {
     public void shareText_noScoreWhenUnavailable() {
         String text = ShareLinks.shareText("Chips", null,
                 true, -1, 0, "https://barelabel.app/p/012345678905");
-        assertTrue(!text.contains("Clean Score"));
+        assertTrue(!text.contains("/100"));
+    }
+
+    @Test
+    public void displayName_titleCasesAllCaps() {
+        assertEquals("Multigrain Organic Bread, Multigrain",
+                ShareLinks.displayName("MULTIGRAIN ORGANIC BREAD, MULTIGRAIN"));
+    }
+
+    @Test
+    public void displayName_leavesMixedCaseAlone() {
+        assertEquals("Dave's Bread", ShareLinks.displayName("Dave's Bread"));
+        assertEquals("McDonald's Fries",
+                ShareLinks.displayName("McDonald's Fries"));
+    }
+
+    @Test
+    public void displayName_nullAndEmpty() {
+        assertEquals("Unknown product", ShareLinks.displayName(null));
+        assertEquals("Unknown product", ShareLinks.displayName(""));
+    }
+
+    @Test
+    public void productUrl_withMerchants_carriesMParam() {
+        java.util.List<String> merchants =
+                java.util.Arrays.asList("Amazon", "Walmart", "Target");
+        String url = ShareLinks.productUrl("012345678905", true, 85, 0,
+                "Bread", null, merchants);
+        assertTrue(url.contains("m=Amazon%2CWalmart%2CTarget"));
+    }
+
+    @Test
+    public void productUrl_nullMerchants_omitsMParam() {
+        String url = ShareLinks.productUrl("012345678905", true, 85, 0,
+                "Bread", null, null);
+        assertTrue(!url.contains("&m="));
+    }
+
+    @Test
+    public void productUrl_titleCasesNameParam() {
+        String url = ShareLinks.productUrl("012345678905", true, 85, 0,
+                "MULTIGRAIN BREAD", null);
+        assertTrue(url.contains("n=Multigrain+Bread"));
     }
 }
