@@ -1,1 +1,1 @@
-[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"android_app","package_name":"com.example.barelabel","sha256_cert_fingerprints":["__SHA256_FINGERPRINT__"]}}]
+[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"android_app","package_name":"com.barelabel.app","sha256_cert_fingerprints":["__SHA256_FINGERPRINT__"]}}]

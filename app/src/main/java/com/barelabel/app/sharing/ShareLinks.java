@@ -18,7 +18,7 @@ public final class ShareLinks {
 
     /** Play Store listing (placeholder until the app is published). */
     public static final String PLAY_STORE_URL =
-            "https://play.google.com/store/apps/details?id=com.example.barelabel";
+            "https://play.google.com/store/apps/details?id=com.barelabel.app";
 
     private ShareLinks() {}
 

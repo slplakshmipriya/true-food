@@ -30,10 +30,10 @@ from fastapi.responses import HTMLResponse, JSONResponse
 app = FastAPI(title="barelabel-share")
 
 PLAY_STORE_URL = (
-    "https://play.google.com/store/apps/details?id=com.example.barelabel"
+    "https://play.google.com/store/apps/details?id=com.barelabel.app"
 )
 SHARE_HOST = "barelabel.app"
-APP_PACKAGE = "com.example.barelabel"
+APP_PACKAGE = "com.barelabel.app"
 GTIN_RE = re.compile(r"^[0-9]{8,14}$")
 
 ASSETLINKS_PATH = Path(__file__).with_name("assetlinks.json")
