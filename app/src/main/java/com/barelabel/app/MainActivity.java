@@ -290,6 +290,12 @@ setupCategoryFilterPanel();
         });
     }
     if (alternatesController != null) {
+        alternatesController.setShareListener(p -> {
+            AnalyticsTracker.productShared("alternate");
+            com.barelabel.app.sharing.ShareHelper.shareProduct(this, p);
+        });
+    }
+    if (alternatesController != null) {
         alternatesController.setAlternateSearchListener(alt -> {
             if (alt == null) return;
             // The tapped alternate becomes the next search candidate: exact
@@ -369,6 +375,31 @@ setupCategoryFilterPanel();
         }
         return false;
     });
+
+    // 8. App Links deep link: a shared product URL opens its verdict directly.
+    handleDeepLink(getIntent());
+}
+
+@Override
+protected void onNewIntent(Intent intent) {
+    super.onNewIntent(intent);
+    setIntent(intent);
+    handleDeepLink(intent);
+}
+
+/**
+ * App Links entry point: barelabel.app/p/{gtin} resolves to the same
+ * GTIN-exact search a barcode scan uses. Non-share intents are ignored.
+ */
+private void handleDeepLink(Intent intent) {
+    if (intent == null) return;
+    if (!Intent.ACTION_VIEW.equals(intent.getAction())) return;
+    android.net.Uri uri = intent.getData();
+    if (uri == null) return;
+    String gtin = com.barelabel.app.sharing.ShareLinks.extractGtin(
+            uri.getHost(), uri.getPath());
+    if (gtin == null) return;
+    lookupBarcodeAndSearch(gtin);
 }
 
 
@@ -669,6 +700,8 @@ private void refreshRecents() {
 
     Button buyButton = findViewById(R.id.walmartButton);
     View flaggedTitle = findViewById(R.id.flaggedTitle);
+    android.widget.ImageButton shareVerdictButton =
+            findViewById(R.id.shareVerdictButton);
 
     // Bind or dynamic click listener for viewing ingredients inside the verdict card
     Button viewIngredientsButton = findViewById(R.id.viewIngredientsButton);
@@ -695,6 +728,7 @@ private void refreshRecents() {
         if (flaggedTitle != null) flaggedTitle.setVisibility(View.GONE);
         if (flaggedText != null) flaggedText.setVisibility(View.GONE);
         if (buyButton != null) buyButton.setVisibility(View.GONE);
+        if (shareVerdictButton != null) shareVerdictButton.setVisibility(View.GONE);
         bindVerdictChips(null);
         alternatesController.hide();
         return;
@@ -764,6 +798,7 @@ private void refreshRecents() {
         if (flaggedTitle != null) flaggedTitle.setVisibility(View.GONE);
         if (flaggedText != null) flaggedText.setVisibility(View.GONE);
         if (buyButton != null) buyButton.setVisibility(View.GONE);
+        if (shareVerdictButton != null) shareVerdictButton.setVisibility(View.GONE);
         bindVerdictChips(null);
         alternatesController.hide();
         return;
@@ -803,6 +838,17 @@ private void refreshRecents() {
                 com.barelabel.app.images.ProductImageResolver.getCached(
                         this, result == null ? "" : result.gtinUpc),
                 affiliateDisclosureView, buyButton);
+    }
+
+    // 1b. Share button: system share sheet with verdict + deep link.
+    if (shareVerdictButton != null) {
+        shareVerdictButton.setVisibility(View.VISIBLE);
+        final ProductResult shareResult = result;
+        shareVerdictButton.setOnClickListener(v -> {
+            AnalyticsTracker.productShared("verdict_card");
+            com.barelabel.app.sharing.ShareHelper.shareProduct(
+                    MainActivity.this, shareResult);
+        });
     }
 
     // 2. Verdict Card Styling & Flagged List Output
