@@ -134,7 +134,7 @@ def landing_page(play_store_url, platform="desktop"):
         "</div>"
         "<section class='shot'><div class='wrap'>"
         "<h2>See it in action</h2>"
-        "<p class='sub'>Scan a barcode or search a product \\u2014 BareLabel "
+        "<p class='sub'>Scan a barcode or search a product: BareLabel "
         "screens every ingredient and scores how clean it is.</p>"
         "<img class='app-shot' src='/static/app-screenshot.png' "
         "alt='BareLabel app showing a product search with CLEAN verdicts' "
