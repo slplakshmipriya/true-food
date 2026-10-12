@@ -51,7 +51,7 @@ public class ShareLinksTest {
     @Test
     public void extractGtin_caseInsensitiveHost() {
         assertEquals("012345678905",
-                ShareLinks.extractGtin("BareLabel.App", "/p/012345678905"));
+                ShareLinks.extractGtin("BareLabel.Online", "/p/012345678905"));
     }
 
     @Test
