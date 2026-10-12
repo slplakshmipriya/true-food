@@ -26,11 +26,12 @@ import urllib.request
 from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from pages import detect_platform, landing_page, lookup_page
 from cache import LruCache, cache_key
+from stats import stats
 from verdict import (
     ranked_candidates,
     select_top_pick,
@@ -105,6 +106,22 @@ def off_product(gtin: str) -> tuple[str | None, str | None]:
         _OFF_CACHE.clear()
     _OFF_CACHE[gtin] = (now, image, name)
     return image, name
+
+
+@app.get("/go/play")
+def go_play(request: Request, src: str = Query(default="")):
+    """Counted Play Store redirect: every 'get the app' tap lands here
+    first (zero-JS click tracking), then 302s to the Play Store."""
+    platform = detect_platform(request.headers.get("user-agent"))
+    stats.incr(f"click:{platform}:{src or 'unknown'}")
+    return RedirectResponse(PLAY_STORE_URL)
+
+
+@app.get("/stats")
+def stats_view():
+    """Analytics snapshot as JSON. Container-local: resets on cold
+    start / new revisions, per-instance counts."""
+    return JSONResponse(stats.snapshot())
 
 
 @app.get("/.well-known/assetlinks.json")
@@ -229,7 +246,7 @@ font-weight:600}}
 {retailer_html}
 <p>
 <a class="btn primary" href="{esc(intent_url)}">Open in BareLabel</a><br />
-<a class="btn secondary" href="{esc(PLAY_STORE_URL)}">Get the app</a>
+<a class="btn secondary" href="/go/play?src=share">Get the app</a>
 </p>
 </body>
 </html>"""
@@ -239,7 +256,8 @@ font-weight:600}}
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     platform = detect_platform(request.headers.get("user-agent"))
-    return HTMLResponse(landing_page(PLAY_STORE_URL, platform))
+    stats.incr(f"landing:{platform}")
+    return HTMLResponse(landing_page(platform))
 
 
 # ---------------------------------------------------------------------------
@@ -286,7 +304,9 @@ def usda_search(query, page_size=25):
     for _ in range(2):
         try:
             with urllib.request.urlopen(req, timeout=10) as resp:
-                return json.loads(resp.read().decode("utf-8")).get("foods") or []
+                foods = json.loads(resp.read().decode("utf-8")).get("foods") or []
+                stats.incr("usda:ok")
+                return foods
         except urllib.error.HTTPError as e:
             # 403 = invalid key, 429 = rate limited, 5xx = USDA down.
             # Status goes to the server log only; never echo the key.
@@ -298,6 +318,7 @@ def usda_search(query, page_size=25):
             print(f"USDA search failed: {type(e).__name__} for query={query!r}")
             err = UsdaError("request failed")
         time.sleep(1)
+    stats.incr("usda:fail")
     raise err
 
 
@@ -342,13 +363,13 @@ def lookup(request: Request, q: str = Query(default="")):
     query = (q or "").strip()
     platform = detect_platform(request.headers.get("user-agent"))
     if not query:
-        return HTMLResponse(lookup_page(None, None, None, PLAY_STORE_URL,
-                                        platform))
+        return HTMLResponse(lookup_page(None, None, None, platform))
+    stats.incr("search:barcode" if GTIN_RE.match(query) else "search:text")
     if not USDA_API_KEY:
         return HTMLResponse(lookup_page(
             query, None,
             "Product search isn't configured on this server yet.",
-            PLAY_STORE_URL, platform))
+            platform))
     key = cache_key(query)
     cached = _lookup_cache.get(key)
     if cached is not None:
@@ -361,14 +382,14 @@ def lookup(request: Request, q: str = Query(default="")):
             return HTMLResponse(lookup_page(
                 query, None,
                 "Product search is temporarily unavailable — please try again.",
-                PLAY_STORE_URL, platform))
+                platform))
         if food is not None:
             # Cache the USDA record + image URL (never misses or errors).
             _lookup_cache.put(key, {"food": food, "image": image})
     if food is None:
         return HTMLResponse(lookup_page(
             query, None, f'No products found for "{query}".',
-            PLAY_STORE_URL, platform))
+            platform))
     brand = food.get("brandName") or food.get("brandOwner") or ""
     verdict = verdict_for(
         food.get("description") or "",
@@ -376,4 +397,4 @@ def lookup(request: Request, q: str = Query(default="")):
         food.get("ingredients") or "",
     )
     return HTMLResponse(lookup_page(query, (verdict, image), None,
-                                    PLAY_STORE_URL, platform))
+                                    platform))

@@ -2,7 +2,7 @@ FROM python:3.12-slim
 WORKDIR /srv
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py pages.py cache.py assetlinks.json ./
+COPY app.py pages.py cache.py stats.py assetlinks.json ./
 COPY verdict/ ./verdict/
 COPY static/ ./static/
 EXPOSE 8080

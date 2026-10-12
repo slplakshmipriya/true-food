@@ -86,6 +86,27 @@ curl "https://barelabel.online/p/0073947582301?v=clean&score=85&flagged=0&n=Test
 Stays inside Cloud Run's free tier (2M requests/month) at any realistic
 scale for this feature: effectively $0.
 
+## Analytics (zero JS)
+
+Server-side counters in `stats.py` — no client JavaScript, nothing
+phones home. `GET /stats` returns the snapshot as JSON.
+
+- `landing:<platform>` — landing page views, by platform
+  (`android` / `ios` / `desktop`).
+- `search:text` / `search:barcode` — lookups submitted.
+- `usda:ok` / `usda:fail` — USDA round-trips (`fail` = final, after the
+  one retry).
+- `click:<platform>:<src>` — taps on a "get the app" CTA. Every Play
+  Store link goes through `/go/play?src=<placement>` first (counted,
+  then 302-redirected to the real Play Store URL). Placements:
+  `landing-nav`, `landing-hero`, `landing-cta`, `lookup-nav`,
+  `lookup-card`, `share`. iOS/desktop CTAs are non-link text, so clicks
+  are Android-only in practice.
+
+Container-local like the cache: counts reset on cold start, new
+revisions, and deploys, and each Cloud Run instance keeps its own.
+Directional numbers, not durable reporting.
+
 ## Local run
 
 ```bash

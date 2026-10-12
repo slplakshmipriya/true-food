@@ -90,22 +90,24 @@ def detect_platform(user_agent):
     return "desktop"
 
 
-def app_cta(platform, play_store_url, kind):
+def app_cta(platform, kind, page):
     """Platform-aware app CTA snippet.
 
     kind: 'nav' (top navigation), 'hero' (landing hero button),
     'cta' (landing bottom section), 'card' (lookup verdict card).
-    Android links to the Play Store; iOS shows a non-link 'coming soon';
-    desktop shows plain text.
+    page: 'landing' | 'lookup' — feeds the src tag.
+    Android links via /go/play (counted server-side, then redirected to
+    the Play Store); iOS shows a non-link 'coming soon'; desktop shows
+    plain text.
     """
-    e = html.escape(play_store_url, quote=True)
+    href = "/go/play?src=" + page + "-" + kind
     link_cls = {"nav": "link", "hero": "btn btn-outline",
                 "cta": "btn btn-light", "card": "btn btn-green"}[kind]
     text_cls = {"nav": "nav-note", "hero": "hero-note", "cta": "hero-note",
                 "card": "card-note"}[kind]
     if platform == "android":
         label = "Get the Android app" if kind == "hero" else "Get the app"
-        return "<a class='" + link_cls + "' href='" + e + "'>" + label + "</a>"
+        return "<a class='" + link_cls + "' href='" + href + "'>" + label + "</a>"
     if platform == "ios":
         return ("<span class='" + link_cls + " btn-disabled'>"
                 "iOS app coming soon</span>")
@@ -113,7 +115,7 @@ def app_cta(platform, play_store_url, kind):
             "Download the app on your phone</span>")
 
 
-def landing_page(play_store_url, platform="desktop"):
+def landing_page(platform="desktop"):
     return (
         "<!doctype html><html lang='en'><head><meta charset='utf-8' />"
         "<meta name='viewport' content='width=device-width, initial-scale=1' />"
@@ -125,14 +127,14 @@ def landing_page(play_store_url, platform="desktop"):
         "<div class='wrap'><nav class='top'>"
         "<a class='brand' href='/'>BareLabel</a>"
         "<span><a class='link' href='/lookup'>Try it</a> "
-        + app_cta(platform, play_store_url, "nav") + "</span></nav></div>"
+        + app_cta(platform, "nav", "landing") + "</span></nav></div>"
         "<div class='hero'>"
         "<h1>Know what's in your food.</h1>"
         "<p>Search any grocery product. BareLabel flags the ingredients "
         "you'd rather avoid, scores how clean it is, and finds cleaner "
         "alternates.</p>"
         "<a class='btn btn-light' href='/lookup'>Try it on the web</a>"
-        + app_cta(platform, play_store_url, "hero") +
+        + app_cta(platform, "hero", "landing") +
         "</div>"
         "<section class='shot'><div class='wrap'>"
         "<h2>See it in action</h2>"
@@ -173,7 +175,7 @@ def landing_page(play_store_url, platform="desktop"):
         "<h2>Take it to the store.</h2>"
         "<p>Barcode scanning, price comparisons, and clean alternates:"
         " in your pocket.</p>"
-        + app_cta(platform, play_store_url, "cta") +
+        + app_cta(platform, "cta", "landing") +
         "</div>"
         "<footer>BareLabel \u00b7 Ingredient data: "
         "<a href='https://fdc.nal.usda.gov/' target='_blank' "
@@ -184,7 +186,7 @@ def landing_page(play_store_url, platform="desktop"):
     )
 
 
-def lookup_page(query, result, error, play_store_url, platform="desktop"):
+def lookup_page(query, result, error, platform="desktop"):
     """Search form plus an optional verdict card or error message.
 
     result is (verdict_dict, image_url_or_None); verdict_dict comes from
@@ -229,7 +231,7 @@ def lookup_page(query, result, error, play_store_url, platform="desktop"):
             + "<p class='note'>Verdict uses BareLabel's default avoid list "
               "(everything it flags). The Android app lets you customize "
               "yours.</p>"
-            + "<p>" + app_cta(platform, play_store_url, "card") + "</p></div>"
+            + "<p>" + app_cta(platform, "card", "lookup") + "</p></div>"
         )
     title = ("BareLabel lookup: " + q) if query else "BareLabel product lookup"
     return (
@@ -240,7 +242,7 @@ def lookup_page(query, result, error, play_store_url, platform="desktop"):
         "<div class='wrap'><nav class='top'>"
         "<a class='brand' href='/'>BareLabel</a>"
         "<span><a class='link' href='/lookup'>Try it</a> "
-        + app_cta(platform, play_store_url, "nav") + "</span></nav>"
+        + app_cta(platform, "nav", "lookup") + "</span></nav>"
         "<h2 style='margin-top:12px'>Product lookup</h2>"
         "<p class='sub'>Search a product name or paste a barcode number.</p>"
         "<form class='search' action='/lookup' method='get'>"

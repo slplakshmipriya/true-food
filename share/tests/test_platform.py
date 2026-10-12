@@ -34,7 +34,6 @@ MAC_UA = (
     "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 )
 
-PLAY_URL = "https://play.google.com/store/apps/details?id=com.barelabel.app"
 
 
 def test_detect_platform():
@@ -49,50 +48,52 @@ def test_detect_platform():
     assert detect_platform(None) == "desktop"
 
 
-def test_cta_android_links_to_play_store():
+def test_cta_android_links_via_counted_redirect():
     for kind in ("nav", "hero", "cta", "card"):
-        html = app_cta("android", PLAY_URL, kind)
-        assert 'href=' in html and PLAY_URL in html, kind
+        html = app_cta("android", kind, "landing")
+        assert "/go/play?src=landing-" + kind in html, kind
         assert "coming soon" not in html
 
 
 def test_cta_ios_is_coming_soon_without_link():
     for kind in ("nav", "hero", "cta", "card"):
-        html = app_cta("ios", PLAY_URL, kind)
+        html = app_cta("ios", kind, "landing")
         assert "iOS app coming soon" in html, kind
         assert "href=" not in html, kind
 
 
 def test_cta_desktop_is_plain_text():
     for kind in ("nav", "hero", "cta", "card"):
-        html = app_cta("desktop", PLAY_URL, kind)
+        html = app_cta("desktop", kind, "landing")
         assert "Download the app on your phone" in html, kind
         assert "href=" not in html, kind
 
 
 def test_landing_page_cta_per_platform():
-    android = landing_page(PLAY_URL, "android")
-    assert PLAY_URL in android and "Get the Android app" in android
-    ios = landing_page(PLAY_URL, "ios")
+    android = landing_page("android")
+    assert "/go/play?src=landing-hero" in android
+    assert "Get the Android app" in android
+    ios = landing_page("ios")
     assert "iOS app coming soon" in ios
-    assert PLAY_URL not in ios
-    desktop = landing_page(PLAY_URL, "desktop")
+    assert "/go/play" not in ios
+    desktop = landing_page("desktop")
     assert "Download the app on your phone" in desktop
+    assert "/go/play" not in desktop
     # Default platform keeps old callers working.
-    assert "Download the app on your phone" in landing_page(PLAY_URL)
+    assert "Download the app on your phone" in landing_page()
 
 
 def test_lookup_page_cta_per_platform():
-    android = lookup_page("bread", None, "Some error", PLAY_URL, "android")
-    assert PLAY_URL in android
-    ios = lookup_page("bread", None, "Some error", PLAY_URL, "ios")
+    android = lookup_page("bread", None, "Some error", "android")
+    assert "/go/play?src=lookup-nav" in android
+    ios = lookup_page("bread", None, "Some error", "ios")
     assert "iOS app coming soon" in ios
-    desktop = lookup_page("bread", None, "Some error", PLAY_URL, "desktop")
+    desktop = lookup_page("bread", None, "Some error", "desktop")
     assert "Download the app on your phone" in desktop
 
 
 def test_landing_pills_use_canonical_category_names():
-    html = landing_page(PLAY_URL, "desktop")
+    html = landing_page("desktop")
     for name in ["Emulsifiers &amp; Thickening Agents",
                  "Flavor Enhancers &amp; Additives",
                  "Fats &amp; Hydrogenated Oils",
@@ -101,7 +102,7 @@ def test_landing_pills_use_canonical_category_names():
 
 
 def test_footer_links_data_sources():
-    html = landing_page(PLAY_URL, "desktop")
+    html = landing_page("desktop")
     assert "https://fdc.nal.usda.gov/" in html
     assert "https://world.openfoodfacts.org/" in html
 
@@ -110,13 +111,13 @@ def test_verdict_card_explains_binary_verdict_vs_score():
     from verdict import verdict_for
     v = verdict_for("BREAD", "TestBrand", "wheat flour, water, salt")
     assert not v["clean"]
-    html = lookup_page("bread", (v, None), None, PLAY_URL, "desktop")
+    html = lookup_page("bread", (v, None), None, "desktop")
     assert "score-note" in html
     assert "binary" in html
 
 
 def test_landing_page_includes_app_screenshot():
-    html = landing_page(PLAY_URL, "android")
+    html = landing_page("android")
     assert "/static/app-screenshot.png" in html
     assert "See it in action" in html
 
@@ -138,7 +139,7 @@ def test_route_passes_platform_through():
     app_module.USDA_API_KEY = "test-key"
     try:
         android = app_module.index(req(ANDROID_UA)).body.decode()
-        assert PLAY_URL in android
+        assert "/go/play?src=landing-hero" in android
         ios = app_module.index(req(IPHONE_UA)).body.decode()
         assert "iOS app coming soon" in ios
         desktop = app_module.index(req(DESKTOP_UA)).body.decode()
