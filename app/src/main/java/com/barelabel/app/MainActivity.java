@@ -55,6 +55,8 @@ import com.barelabel.app.model.ProductResult;
 import com.barelabel.app.model.ScannedProduct;
 import com.barelabel.app.network.UsdaApiClient;
 import com.barelabel.app.FlaggedIngredientManager;
+import com.barelabel.app.images.ProductImageResolver;
+import com.barelabel.app.search.BarcodeSeed;
 import com.barelabel.app.search.CleanAlternateFinder;
 import com.barelabel.app.ui.AlternatesCardController;
 import com.barelabel.app.ui.CompareViewBuilder;
@@ -1305,7 +1307,8 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
         if (progress != null) progress.setVisibility(View.VISIBLE);
 
         new Thread(() -> {
-            String productName = gtin;
+            String usdaDescription = "";
+            String usdaBrand = "";
 
             try {
                 // Try GTIN spellings: as-scanned, then with leading zeros stripped
@@ -1338,23 +1341,27 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
                 }
 
                 if (match != null) {
-                    String description = match.optString("description", "");
+                    usdaDescription = match.optString("description", "");
                     String matchBrandName = match.optString("brandName", "");
-                    String brand = !matchBrandName.isEmpty() ? matchBrandName
+                    usdaBrand = !matchBrandName.isEmpty() ? matchBrandName
                             : match.optString("brandOwner", "");
-
-                    if (!description.isEmpty()) {
-                        productName = description;
-                        if (!brand.isEmpty()) {
-                            productName = description + " (" + brand + ")";
-                        }
-                    }
                 }
             } catch (Exception e) {
                 e.printStackTrace();
             }
 
-            final String finalProductName = productName;
+            // USDA carries no record for this GTIN — a data gap, not a code
+            // bug (e.g. Rice Krispies 038000265013). Ask Open Food Facts for
+            // the product name so the normal text search lands on the nearest
+            // USDA variant instead of searching the raw barcode digits.
+            String offName = "";
+            if (usdaDescription.trim().isEmpty()) {
+                offName = ProductImageResolver.fetchDisplayName(
+                        MainActivity.this, gtin);
+            }
+
+            final String finalProductName = BarcodeSeed.resolve(
+                    usdaDescription, usdaBrand, offName, gtin);
             runOnUiThread(() -> {
                 if (progress != null) progress.setVisibility(View.GONE);
                 searchBox.setText(finalProductName);
