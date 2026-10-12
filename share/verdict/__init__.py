@@ -13,5 +13,19 @@ here, and vice versa.
 """
 
 from .engine import verdict_for
+from .ranking import (
+    is_spam_brand,
+    is_whole_word_match,
+    normalize,
+    ranked_candidates,
+    select_top_pick,
+)
 
-__all__ = ["verdict_for"]
+__all__ = [
+    "verdict_for",
+    "normalize",
+    "is_spam_brand",
+    "is_whole_word_match",
+    "ranked_candidates",
+    "select_top_pick",
+]

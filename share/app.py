@@ -29,7 +29,11 @@ from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from pages import landing_page, lookup_page
-from verdict import verdict_for
+from verdict import (
+    ranked_candidates,
+    select_top_pick,
+    verdict_for,
+)
 
 app = FastAPI(title="barelabel-share")
 
@@ -247,11 +251,12 @@ class UsdaError(Exception):
     pass
 
 
-def usda_search(query, page_size=10):
+def usda_search(query, page_size=25):
     """Branded USDA search; returns the foods list (possibly empty).
 
-    Raises UsdaError when the request itself fails, so callers can tell
-    'USDA is broken' apart from 'no products matched'.
+    pageSize 25 mirrors the Android app so the spam filter has a real
+    pool to rank. Raises UsdaError when the request itself fails, so
+    callers can tell 'USDA is broken' apart from 'no products matched'.
     """
     if not USDA_API_KEY:
         return []
@@ -279,7 +284,7 @@ def usda_search(query, page_size=10):
 
 
 def pick_product(foods, query):
-    """Mirror the app: exact GTIN match, else first result with ingredients."""
+    """Mirror the app: exact GTIN match, else the ranked top pick."""
     if not foods:
         return None
     if GTIN_RE.match(query or ""):
@@ -288,10 +293,7 @@ def pick_product(foods, query):
             stored = (f.get("gtinUpc") or "").lstrip("0")
             if stored and stored == needle:
                 return f
-    for f in foods:
-        if (f.get("ingredients") or "").strip():
-            return f
-    return foods[0]
+    return select_top_pick(foods, ranked_candidates(foods, query))
 
 
 def lookup_product(query):
