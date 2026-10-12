@@ -8,7 +8,10 @@ Tiny Cloud Run service behind `https://barelabel.online`. Serves:
   get the CLEAN/DIRTY verdict, Clean Score, and flagged ingredients with
   explanations. Powered by a Python port of the Android verdict engine
   (`verdict/`); verdicts match the app's default "everything on" avoid list.
-  Needs `USDA_API_KEY` in the environment (see below).
+  Needs `USDA_API_KEY` in the environment (see below). Successful lookups
+  are cached in container-local memory (query → USDA record + image URL):
+  30-day TTL, 100 MB budget, LRU eviction (`cache.py`). Misses and USDA
+  errors are never cached.
 - `/.well-known/assetlinks.json` — App Links verification so
   `barelabel.online/p/{gtin}` links open directly in the Android app.
 - `/p/{gtin}` — Open Graph preview page. Chat apps (WhatsApp, Messages)

@@ -29,6 +29,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from pages import landing_page, lookup_page
+from cache import LruCache, cache_key
 from verdict import (
     ranked_candidates,
     select_top_pick,
@@ -245,6 +246,10 @@ def index():
 USDA_API_KEY = os.environ.get("USDA_API_KEY", "")
 USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
 
+# Container-local lookup cache: query -> (USDA food record, OFF image URL).
+# 30-day TTL, 100 MB budget, LRU eviction. Per-instance memory only.
+_lookup_cache = LruCache()
+
 
 class UsdaError(Exception):
     """USDA request failed (bad key, rate limit, outage) — not 'no results'."""
@@ -329,14 +334,22 @@ def lookup(q: str = Query(default="")):
             query, None,
             "Product search isn't configured on this server yet.",
             PLAY_STORE_URL))
-    food, image = None, None
-    try:
-        food, image = lookup_product(query)
-    except UsdaError:
-        return HTMLResponse(lookup_page(
-            query, None,
-            "Product search is temporarily unavailable — please try again.",
-            PLAY_STORE_URL))
+    key = cache_key(query)
+    cached = _lookup_cache.get(key)
+    if cached is not None:
+        food, image = cached["food"], cached["image"]
+    else:
+        food, image = None, None
+        try:
+            food, image = lookup_product(query)
+        except UsdaError:
+            return HTMLResponse(lookup_page(
+                query, None,
+                "Product search is temporarily unavailable — please try again.",
+                PLAY_STORE_URL))
+        if food is not None:
+            # Cache the USDA record + image URL (never misses or errors).
+            _lookup_cache.put(key, {"food": food, "image": image})
     if food is None:
         return HTMLResponse(lookup_page(
             query, None, f'No products found for "{query}".',
