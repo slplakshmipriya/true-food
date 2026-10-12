@@ -43,10 +43,12 @@ def test_scoring():
 
 def test_explainer():
     assert "dyes" in explainer.reason_for("Artificial Colors")
+    assert "avoid list" in explainer.reason_for("Dairy")
+    assert "you chose" not in explainer.reason_for("Dairy").lower()
     assert explainer.reason_for("No Such Category") == \
-        "You flagged this category in your avoid list."
+        "This category is on the avoid list."
     assert explainer.reason_for(None) == \
-        "You flagged this category in your avoid list."
+        "This category is on the avoid list."
 
 
 def test_flagged_exact_and_plural():

@@ -91,6 +91,30 @@ def test_lookup_page_cta_per_platform():
     assert "Download the app on your phone" in desktop
 
 
+def test_landing_pills_use_canonical_category_names():
+    html = landing_page(PLAY_URL, "desktop")
+    for name in ["Emulsifiers &amp; Thickening Agents",
+                 "Flavor Enhancers &amp; Additives",
+                 "Fats &amp; Hydrogenated Oils",
+                 "Processed Sweeteners &amp; Fibers"]:
+        assert name in html
+
+
+def test_footer_links_data_sources():
+    html = landing_page(PLAY_URL, "desktop")
+    assert "https://fdc.nal.usda.gov/" in html
+    assert "https://world.openfoodfacts.org/" in html
+
+
+def test_verdict_card_explains_binary_verdict_vs_score():
+    from verdict import verdict_for
+    v = verdict_for("BREAD", "TestBrand", "wheat flour, water, salt")
+    assert not v["clean"]
+    html = lookup_page("bread", (v, None), None, PLAY_URL, "desktop")
+    assert "score-note" in html
+    assert "binary" in html
+
+
 def test_landing_page_includes_app_screenshot():
     html = landing_page(PLAY_URL, "android")
     assert "/static/app-screenshot.png" in html

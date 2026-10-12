@@ -267,6 +267,8 @@ def usda_search(query, page_size=25):
     pageSize 25 mirrors the Android app so the spam filter has a real
     pool to rank. Raises UsdaError when the request itself fails, so
     callers can tell 'USDA is broken' apart from 'no products matched'.
+    One retry on transient failures (timeout, 429, 5xx); a 403 means
+    the key itself is bad, so retrying is pointless.
     """
     if not USDA_API_KEY:
         return []
@@ -280,17 +282,23 @@ def usda_search(query, page_size=25):
         f"{USDA_SEARCH_URL}?{params}",
         headers={"User-Agent": "BareLabel/1.0 (web lookup)"},
     )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode("utf-8")).get("foods") or []
-    except urllib.error.HTTPError as e:
-        # 403 = invalid key, 429 = rate limited, 5xx = USDA down.
-        # Status goes to the server log only; never echo the key.
-        print(f"USDA search failed: HTTP {e.code} for query={query!r}")
-        raise UsdaError(f"HTTP {e.code}")
-    except Exception as e:
-        print(f"USDA search failed: {type(e).__name__} for query={query!r}")
-        raise UsdaError("request failed")
+    err = None
+    for _ in range(2):
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read().decode("utf-8")).get("foods") or []
+        except urllib.error.HTTPError as e:
+            # 403 = invalid key, 429 = rate limited, 5xx = USDA down.
+            # Status goes to the server log only; never echo the key.
+            print(f"USDA search failed: HTTP {e.code} for query={query!r}")
+            if e.code == 403:
+                raise UsdaError(f"HTTP {e.code}")
+            err = UsdaError(f"HTTP {e.code}")
+        except Exception as e:
+            print(f"USDA search failed: {type(e).__name__} for query={query!r}")
+            err = UsdaError("request failed")
+        time.sleep(1)
+    raise err
 
 
 def pick_product(foods, query):

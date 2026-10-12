@@ -47,6 +47,7 @@ font-size:14px;font-weight:600}
 .cta h2{color:#fff}
 .cta p{opacity:.9;margin:0 0 24px}
 footer{text-align:center;color:#9ca3af;font-size:13px;padding:28px 20px}
+footer a{color:inherit}
 form.search{display:flex;gap:10px;max-width:560px;margin:28px auto}
 form.search input{flex:1;padding:14px 18px;border:2px solid #d1d5db;
 border-radius:12px;font-size:16px}
@@ -60,6 +61,7 @@ text-align:center}
 font-weight:800;margin:14px 0 6px;color:#fff}
 .badge.clean{background:#166534}.badge.dirty{background:#991b1b}
 .score{font-size:15px;color:#4b5563;margin:6px 0 4px}
+.score-note{font-size:13px;color:#6b7280;margin:0 0 10px;max-width:560px}
 .cat{color:#6b7280;font-size:14px}
 .flagged{text-align:left;margin-top:20px}
 .fgroup{margin-bottom:14px}
@@ -159,10 +161,10 @@ def landing_page(play_store_url, platform="desktop"):
         "<span class='flag'>Artificial Colors</span>"
         "<span class='flag'>Preservatives</span>"
         "<span class='flag'>Artificial Sweeteners</span>"
-        "<span class='flag'>Emulsifiers &amp; Thickeners</span>"
-        "<span class='flag'>Flavor Enhancers</span>"
-        "<span class='flag'>Hydrogenated Oils</span>"
-        "<span class='flag'>Processed Sweeteners</span>"
+        "<span class='flag'>Emulsifiers &amp; Thickening Agents</span>"
+        "<span class='flag'>Flavor Enhancers &amp; Additives</span>"
+        "<span class='flag'>Fats &amp; Hydrogenated Oils</span>"
+        "<span class='flag'>Processed Sweeteners &amp; Fibers</span>"
         "<span class='flag'>Dairy</span><span class='flag'>Gluten</span>"
         "<span class='flag'>Non-Vegetarian</span>"
         "<span class='flag'>Non-Vegan</span>"
@@ -173,8 +175,11 @@ def landing_page(play_store_url, platform="desktop"):
         " in your pocket.</p>"
         + app_cta(platform, play_store_url, "cta") +
         "</div>"
-        "<footer>BareLabel \u00b7 Ingredient data: USDA FoodData Central "
-        "&amp; Open Food Facts</footer>"
+        "<footer>BareLabel \u00b7 Ingredient data: "
+        "<a href='https://fdc.nal.usda.gov/' target='_blank' "
+        "rel='noopener'>USDA FoodData Central</a> &amp; "
+        "<a href='https://world.openfoodfacts.org/' target='_blank' "
+        "rel='noopener'>Open Food Facts</a></footer>"
         "</body></html>"
     )
 
@@ -217,6 +222,9 @@ def lookup_page(query, result, error, play_store_url, platform="desktop"):
             + "<h2>" + esc(verdict["name"]) + "</h2>" + brand + cat + badge
             + "<div class='score'>Clean Score <b>"
             + str(verdict["score"]) + "/100</b></div>"
+            + "<p class='score-note'>The verdict is binary: one flagged "
+              "ingredient is enough for DIRTY. The score rates the whole "
+              "ingredient list, 0 to 100.</p>"
             + flagged_html
             + "<p class='note'>Verdict uses BareLabel's default avoid list "
               "(everything it flags). The Android app lets you customize "
@@ -241,6 +249,9 @@ def lookup_page(query, result, error, play_store_url, platform="desktop"):
         "<button type='submit'>Check</button></form>"
         + body +
         "</div>"
-        "<footer>BareLabel \u00b7 Ingredient data: USDA FoodData Central "
-        "&amp; Open Food Facts</footer></body></html>"
+        "<footer>BareLabel \u00b7 Ingredient data: "
+        "<a href='https://fdc.nal.usda.gov/' target='_blank' "
+        "rel='noopener'>USDA FoodData Central</a> &amp; "
+        "<a href='https://world.openfoodfacts.org/' target='_blank' "
+        "rel='noopener'>Open Food Facts</a></footer></body></html>"
     )

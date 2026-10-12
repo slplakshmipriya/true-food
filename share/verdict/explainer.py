@@ -1,10 +1,10 @@
 """Port of IngredientExplainer.java: plain-English text per flagged category."""
 
-_FALLBACK = "You flagged this category in your avoid list."
+_FALLBACK = "This category is on the avoid list."
 
 _REASONS = {
     "Dairy":
-        "Milk-derived ingredients. You chose to flag dairy.",
+        "Milk-derived ingredients. Dairy is on the avoid list.",
     "Gluten":
         "Wheat or other gluten sources. Often avoided for celiac "
         "disease or gluten sensitivity.",
