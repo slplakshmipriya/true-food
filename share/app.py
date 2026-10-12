@@ -32,6 +32,7 @@ from fastapi.staticfiles import StaticFiles
 from pages import detect_platform, landing_page, lookup_page
 from cache import LruCache, cache_key
 from stats import stats
+from analytics import client_id_for, track
 from verdict import (
     ranked_candidates,
     select_top_pick,
@@ -113,7 +114,10 @@ def go_play(request: Request, src: str = Query(default="")):
     """Counted Play Store redirect: every 'get the app' tap lands here
     first (zero-JS click tracking), then 302s to the Play Store."""
     platform = detect_platform(request.headers.get("user-agent"))
-    stats.incr(f"click:{platform}:{src or 'unknown'}")
+    placement = src or "unknown"
+    stats.incr(f"click:{platform}:{placement}")
+    track("app_click", {"platform": platform, "placement": placement},
+          client_id_for(request))
     return RedirectResponse(PLAY_STORE_URL)
 
 
@@ -257,6 +261,7 @@ font-weight:600}}
 def index(request: Request):
     platform = detect_platform(request.headers.get("user-agent"))
     stats.incr(f"landing:{platform}")
+    track("landing_view", {"platform": platform}, client_id_for(request))
     return HTMLResponse(landing_page(platform))
 
 
@@ -319,6 +324,7 @@ def usda_search(query, page_size=25):
             err = UsdaError("request failed")
         time.sleep(1)
     stats.incr("usda:fail")
+    track("usda_failure")
     raise err
 
 
@@ -364,7 +370,10 @@ def lookup(request: Request, q: str = Query(default="")):
     platform = detect_platform(request.headers.get("user-agent"))
     if not query:
         return HTMLResponse(lookup_page(None, None, None, platform))
-    stats.incr("search:barcode" if GTIN_RE.match(query) else "search:text")
+    is_barcode = bool(GTIN_RE.match(query))
+    stats.incr("search:barcode" if is_barcode else "search:text")
+    track("search", {"search_type": "barcode" if is_barcode else "text"},
+          client_id_for(request))
     if not USDA_API_KEY:
         return HTMLResponse(lookup_page(
             query, None,

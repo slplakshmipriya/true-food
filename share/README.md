@@ -107,6 +107,35 @@ Container-local like the cache: counts reset on cold start, new
 revisions, and deploys, and each Cloud Run instance keeps its own.
 Directional numbers, not durable reporting.
 
+### Centralized: Google Analytics 4 (Measurement Protocol)
+
+For durable, centralized numbers without any client JavaScript,
+`analytics.py` POSTs the same events to GA4's Measurement Protocol from
+the server, in a fire-and-forget thread that never delays a response:
+
+- `landing_view` `{platform}`, `search` `{search_type}`,
+  `usda_failure`, `app_click` `{platform, placement}`.
+
+Privacy: no cookies; `client_id` is a daily SHA-256 of IP + User-Agent
+(the raw IP is never logged, stored, or sent); search query text is
+never sent. Inert unless configured.
+
+Setup (once):
+
+1. Create a GA4 property at analytics.google.com → get the
+   **Measurement ID** (`G-…`) from Admin → Data Streams.
+2. In the same stream, create a **Measurement Protocol API secret**.
+3. Set both on the service (never in the repo):
+
+```bash
+gcloud run services update barelabel-share --region us-east1 \
+  --project garednx \
+  --update-env-vars GA_MEASUREMENT_ID=G-XXXXXXXXXX,GA_API_SECRET=YOUR_SECRET
+```
+
+Events show in Realtime within a minute; standard reports take up to
+~24h to populate.
+
 ## Local run
 
 ```bash
