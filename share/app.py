@@ -18,6 +18,7 @@ Play Store listing otherwise.
 
 import html
 import json
+import os
 import re
 import time
 import urllib.parse
@@ -26,6 +27,9 @@ from pathlib import Path
 
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse
+
+from pages import landing_page, lookup_page
+from verdict import verdict_for
 
 app = FastAPI(title="barelabel-share")
 
@@ -225,7 +229,99 @@ font-weight:600}}
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    return HTMLResponse(
-        "<h1>BareLabel share backend</h1>"
-        "<p>Serves App Links verification and product link previews.</p>"
+    return HTMLResponse(landing_page(PLAY_STORE_URL))
+
+
+# ---------------------------------------------------------------------------
+# Web lookup: product search + verdict, powered by the ported verdict engine.
+# Needs USDA_API_KEY in the environment (set on the Cloud Run service, not
+# in the repo — the same key the Android app bakes into BuildConfig).
+# ---------------------------------------------------------------------------
+
+USDA_API_KEY = os.environ.get("USDA_API_KEY", "")
+USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
+
+
+def usda_search(query, page_size=10):
+    """Branded USDA search; returns the foods list (possibly empty)."""
+    if not USDA_API_KEY:
+        return []
+    params = urllib.parse.urlencode({
+        "query": query,
+        "dataType": "Branded",
+        "pageSize": page_size,
+        "api_key": USDA_API_KEY,
+    })
+    req = urllib.request.Request(
+        f"{USDA_SEARCH_URL}?{params}",
+        headers={"User-Agent": "BareLabel/1.0 (web lookup)"},
     )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8")).get("foods") or []
+    except Exception:
+        return []
+
+
+def pick_product(foods, query):
+    """Mirror the app: exact GTIN match, else first result with ingredients."""
+    if not foods:
+        return None
+    if GTIN_RE.match(query or ""):
+        needle = query.lstrip("0")
+        for f in foods:
+            stored = (f.get("gtinUpc") or "").lstrip("0")
+            if stored and stored == needle:
+                return f
+    for f in foods:
+        if (f.get("ingredients") or "").strip():
+            return f
+    return foods[0]
+
+
+def lookup_product(query):
+    """(usda_food, off_image_url) for a product-name or barcode query."""
+    query = (query or "").strip()
+    if not query:
+        return None, None
+    foods = usda_search(query)
+    # Barcode digits USDA doesn't know: fall back to an OFF name search so
+    # the verdict still runs on the closest USDA record.
+    if not foods and GTIN_RE.match(query):
+        _, off_name = off_product(query)
+        if off_name:
+            foods = usda_search(off_name)
+    food = pick_product(foods, query)
+    if food is None:
+        return None, None
+    image = None
+    gtin = (food.get("gtinUpc") or "").strip()
+    if gtin:
+        image, _ = off_product(gtin)
+    return food, image
+
+
+@app.get("/lookup", response_class=HTMLResponse)
+def lookup(q: str = Query(default="")):
+    esc = lambda s: html.escape(s or "", quote=True)  # noqa: E731
+    query = (q or "").strip()
+    if not query:
+        return HTMLResponse(lookup_page(None, None, None, PLAY_STORE_URL))
+    if not USDA_API_KEY:
+        return HTMLResponse(lookup_page(
+            query, None,
+            "Product search isn't configured on this server yet.",
+            PLAY_STORE_URL))
+    food, image = lookup_product(query)
+    if food is None:
+        return HTMLResponse(lookup_page(
+            query, None, f'No products found for "{query}".',
+            PLAY_STORE_URL))
+    brand = food.get("brandName") or food.get("brandOwner") or ""
+    verdict = verdict_for(
+        food.get("description") or "",
+        brand,
+        food.get("ingredients") or "",
+    )
+    return HTMLResponse(lookup_page(query, (verdict, image), None,
+                                    PLAY_STORE_URL))

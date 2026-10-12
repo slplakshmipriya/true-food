@@ -1,7 +1,14 @@
-# BareLabel share backend
+# BareLabel web backend
 
 Tiny Cloud Run service behind `https://barelabel.online`. Serves:
 
+- `/` — marketing landing page (hero, how it works, flagged categories,
+  Play Store CTA).
+- `/lookup` — web product lookup: search a product name or barcode number,
+  get the CLEAN/DIRTY verdict, Clean Score, and flagged ingredients with
+  explanations. Powered by a Python port of the Android verdict engine
+  (`verdict/`); verdicts match the app's default "everything on" avoid list.
+  Needs `USDA_API_KEY` in the environment (see below).
 - `/.well-known/assetlinks.json` — App Links verification so
   `barelabel.online/p/{gtin}` links open directly in the Android app.
 - `/p/{gtin}` — Open Graph preview page. Chat apps (WhatsApp, Messages)
@@ -30,6 +37,15 @@ Tiny Cloud Run service behind `https://barelabel.online`. Serves:
    ```
    (Debug builds use the debug keystore; App Links verification only
    matters for the release key that signs the Play Store build.)
+3. **USDA API key (for `/lookup`).** The web lookup queries USDA FoodData
+   Central server-side. Set it as an env var on the Cloud Run service —
+   never in the repo:
+   ```bash
+   gcloud run services update barelabel-share --region us-east1 \
+     --set-env-vars USDA_API_KEY=YOUR_KEY
+   ```
+   Without it, `/lookup` shows a "not configured" notice; everything else
+   (landing page, share previews, assetlinks) works keyless.
 
 ## Deploy
 
