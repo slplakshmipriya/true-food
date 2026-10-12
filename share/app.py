@@ -242,8 +242,17 @@ USDA_API_KEY = os.environ.get("USDA_API_KEY", "")
 USDA_SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
 
 
+class UsdaError(Exception):
+    """USDA request failed (bad key, rate limit, outage) — not 'no results'."""
+    pass
+
+
 def usda_search(query, page_size=10):
-    """Branded USDA search; returns the foods list (possibly empty)."""
+    """Branded USDA search; returns the foods list (possibly empty).
+
+    Raises UsdaError when the request itself fails, so callers can tell
+    'USDA is broken' apart from 'no products matched'.
+    """
     if not USDA_API_KEY:
         return []
     params = urllib.parse.urlencode({
@@ -259,8 +268,14 @@ def usda_search(query, page_size=10):
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read().decode("utf-8")).get("foods") or []
-    except Exception:
-        return []
+    except urllib.error.HTTPError as e:
+        # 403 = invalid key, 429 = rate limited, 5xx = USDA down.
+        # Status goes to the server log only; never echo the key.
+        print(f"USDA search failed: HTTP {e.code} for query={query!r}")
+        raise UsdaError(f"HTTP {e.code}")
+    except Exception as e:
+        print(f"USDA search failed: {type(e).__name__} for query={query!r}")
+        raise UsdaError("request failed")
 
 
 def pick_product(foods, query):
@@ -312,7 +327,14 @@ def lookup(q: str = Query(default="")):
             query, None,
             "Product search isn't configured on this server yet.",
             PLAY_STORE_URL))
-    food, image = lookup_product(query)
+    food, image = None, None
+    try:
+        food, image = lookup_product(query)
+    except UsdaError:
+        return HTMLResponse(lookup_page(
+            query, None,
+            "Product search is temporarily unavailable — please try again.",
+            PLAY_STORE_URL))
     if food is None:
         return HTMLResponse(lookup_page(
             query, None, f'No products found for "{query}".',
