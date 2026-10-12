@@ -91,6 +91,18 @@ def test_lookup_page_cta_per_platform():
     assert "Download the app on your phone" in desktop
 
 
+def test_landing_page_includes_app_screenshot():
+    html = landing_page(PLAY_URL, "android")
+    assert "/static/app-screenshot.png" in html
+    assert "See it in action" in html
+
+
+def test_screenshot_asset_exists():
+    shot = Path(__file__).resolve().parent.parent / "static" / "app-screenshot.png"
+    assert shot.is_file(), "share/static/app-screenshot.png missing"
+    assert shot.stat().st_size < 1024 * 1024  # keep it light for the image
+
+
 def test_route_passes_platform_through():
     import app as app_module
     from starlette.requests import Request

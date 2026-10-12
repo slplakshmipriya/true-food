@@ -27,6 +27,9 @@ text-decoration:none;font-size:16px;margin:6px}
 nav.top .nav-note{margin-left:18px;color:#6b7280;font-weight:600;font-size:15px}
 .hero-note{color:#fff;font-weight:600;font-size:16px}
 .card-note{color:#4b5563;font-weight:600;font-size:15px}
+.shot{background:#f9fafb;text-align:center}
+.app-shot{width:min(300px,72vw);border-radius:28px;
+box-shadow:0 24px 60px rgba(0,0,0,.28);border:1px solid #e5e7eb}
 section{padding:56px 0}
 h2{font-size:28px;text-align:center;margin:0 0 8px}
 .sub{text-align:center;color:#6b7280;margin:0 0 32px;font-size:16px}
@@ -129,6 +132,14 @@ def landing_page(play_store_url, platform="desktop"):
         "<a class='btn btn-light' href='/lookup'>Try it on the web</a>"
         + app_cta(platform, play_store_url, "hero") +
         "</div>"
+        "<section class='shot'><div class='wrap'>"
+        "<h2>See it in action</h2>"
+        "<p class='sub'>Scan a barcode or search a product \\u2014 BareLabel "
+        "screens every ingredient and scores how clean it is.</p>"
+        "<img class='app-shot' src='/static/app-screenshot.png' "
+        "alt='BareLabel app showing a product search with CLEAN verdicts' "
+        "loading='lazy' />"
+        "</div></section>"
         "<section><div class='wrap'>"
         "<h2>How it works</h2>"
         "<p class='sub'>Three steps between you and a cleaner cart.</p>"

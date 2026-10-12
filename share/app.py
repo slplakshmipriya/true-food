@@ -27,6 +27,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from pages import detect_platform, landing_page, lookup_page
 from cache import LruCache, cache_key
@@ -46,6 +47,9 @@ APP_PACKAGE = "com.barelabel.app"
 GTIN_RE = re.compile(r"^[0-9]{8,14}$")
 
 ASSETLINKS_PATH = Path(__file__).with_name("assetlinks.json")
+STATIC_DIR = Path(__file__).with_name("static")
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # Merchant name (lowercased) -> site-search URL template for the product.
 MERCHANT_SEARCH = {
