@@ -3,7 +3,10 @@
 Tiny Cloud Run service behind `https://barelabel.online`. Serves:
 
 - `/` — marketing landing page (hero, how it works, flagged categories,
-  Play Store CTA).
+  Play Store CTA). The app CTA is platform-aware (server-side User-Agent
+  sniffing): Android visitors get the Play Store link, iOS visitors see
+  "iOS app coming soon", desktop visitors see "Download the app on your
+  phone".
 - `/lookup` — web product lookup: search a product name or barcode number,
   get the CLEAN/DIRTY verdict, Clean Score, and flagged ingredients with
   explanations. Powered by a Python port of the Android verdict engine

@@ -9,6 +9,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from cache import LruCache, cache_key
+from starlette.requests import Request
+
+
+def _req(user_agent="test-agent"):
+    return Request({
+        "type": "http",
+        "method": "GET",
+        "path": "/lookup",
+        "headers": [(b"user-agent", user_agent.encode())],
+    })
 
 
 def test_round_trip():
@@ -121,8 +131,8 @@ def test_lookup_route_uses_cache():
     app_module.off_product = fake_off_product
     app_module.USDA_API_KEY = "test-key"
     try:
-        first = app_module.lookup("cache-test-bread-xyz")
-        second = app_module.lookup("  CACHE-TEST-BREAD-XYZ ")  # key normalizes
+        first = app_module.lookup(_req(), q="cache-test-bread-xyz")
+        second = app_module.lookup(_req(), q="  CACHE-TEST-BREAD-XYZ ")  # key normalizes
         assert calls["usda"] == 1  # second lookup served from cache
         assert calls["off"] == 1
         body1 = first.body.decode()
@@ -149,8 +159,8 @@ def test_lookup_route_does_not_cache_misses():
     app_module.usda_search = fake_usda_search
     app_module.USDA_API_KEY = "test-key"
     try:
-        app_module.lookup("cache-test-miss-xyz")
-        app_module.lookup("cache-test-miss-xyz")
+        app_module.lookup(_req(), q="cache-test-miss-xyz")
+        app_module.lookup(_req(), q="cache-test-miss-xyz")
         assert calls["usda"] == 2  # misses are never cached
     finally:
         import importlib

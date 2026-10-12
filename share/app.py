@@ -25,10 +25,10 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from pages import landing_page, lookup_page
+from pages import detect_platform, landing_page, lookup_page
 from cache import LruCache, cache_key
 from verdict import (
     ranked_candidates,
@@ -233,8 +233,9 @@ font-weight:600}}
 
 
 @app.get("/", response_class=HTMLResponse)
-def index():
-    return HTMLResponse(landing_page(PLAY_STORE_URL))
+def index(request: Request):
+    platform = detect_platform(request.headers.get("user-agent"))
+    return HTMLResponse(landing_page(PLAY_STORE_URL, platform))
 
 
 # ---------------------------------------------------------------------------
@@ -324,16 +325,18 @@ def lookup_product(query):
 
 
 @app.get("/lookup", response_class=HTMLResponse)
-def lookup(q: str = Query(default="")):
+def lookup(request: Request, q: str = Query(default="")):
     esc = lambda s: html.escape(s or "", quote=True)  # noqa: E731
     query = (q or "").strip()
+    platform = detect_platform(request.headers.get("user-agent"))
     if not query:
-        return HTMLResponse(lookup_page(None, None, None, PLAY_STORE_URL))
+        return HTMLResponse(lookup_page(None, None, None, PLAY_STORE_URL,
+                                        platform))
     if not USDA_API_KEY:
         return HTMLResponse(lookup_page(
             query, None,
             "Product search isn't configured on this server yet.",
-            PLAY_STORE_URL))
+            PLAY_STORE_URL, platform))
     key = cache_key(query)
     cached = _lookup_cache.get(key)
     if cached is not None:
@@ -346,14 +349,14 @@ def lookup(q: str = Query(default="")):
             return HTMLResponse(lookup_page(
                 query, None,
                 "Product search is temporarily unavailable — please try again.",
-                PLAY_STORE_URL))
+                PLAY_STORE_URL, platform))
         if food is not None:
             # Cache the USDA record + image URL (never misses or errors).
             _lookup_cache.put(key, {"food": food, "image": image})
     if food is None:
         return HTMLResponse(lookup_page(
             query, None, f'No products found for "{query}".',
-            PLAY_STORE_URL))
+            PLAY_STORE_URL, platform))
     brand = food.get("brandName") or food.get("brandOwner") or ""
     verdict = verdict_for(
         food.get("description") or "",
@@ -361,4 +364,4 @@ def lookup(q: str = Query(default="")):
         food.get("ingredients") or "",
     )
     return HTMLResponse(lookup_page(query, (verdict, image), None,
-                                    PLAY_STORE_URL))
+                                    PLAY_STORE_URL, platform))

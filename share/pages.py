@@ -23,6 +23,10 @@ text-decoration:none;font-size:16px;margin:6px}
 .btn-light{background:#fff;color:#14532d}
 .btn-outline{border:2px solid #fff;color:#fff}
 .btn-green{background:#166534;color:#fff}
+.btn-disabled{opacity:.55;cursor:default}
+nav.top .nav-note{margin-left:18px;color:#6b7280;font-weight:600;font-size:15px}
+.hero-note{color:#fff;font-weight:600;font-size:16px}
+.card-note{color:#4b5563;font-weight:600;font-size:15px}
 section{padding:56px 0}
 h2{font-size:28px;text-align:center;margin:0 0 8px}
 .sub{text-align:center;color:#6b7280;margin:0 0 32px;font-size:16px}
@@ -65,8 +69,46 @@ background:#fef2f2;border-radius:12px;padding:20px}
 """
 
 
-def landing_page(play_store_url):
+def detect_platform(user_agent):
+    """'android' | 'ios' | 'desktop' from a User-Agent header.
+
+    iPadOS 13+ in desktop mode reports a Macintosh UA, so a Macintosh UA
+    carrying a Mobile token is treated as iOS (it's an iPad).
+    """
+    ua = (user_agent or "").lower()
+    if "android" in ua:
+        return "android"
+    if "iphone" in ua or "ipod" in ua or "ipad" in ua:
+        return "ios"
+    if "macintosh" in ua and "mobile" in ua:
+        return "ios"
+    return "desktop"
+
+
+def app_cta(platform, play_store_url, kind):
+    """Platform-aware app CTA snippet.
+
+    kind: 'nav' (top navigation), 'hero' (landing hero button),
+    'cta' (landing bottom section), 'card' (lookup verdict card).
+    Android links to the Play Store; iOS shows a non-link 'coming soon';
+    desktop shows plain text.
+    """
     e = html.escape(play_store_url, quote=True)
+    link_cls = {"nav": "link", "hero": "btn btn-outline",
+                "cta": "btn btn-light", "card": "btn btn-green"}[kind]
+    text_cls = {"nav": "nav-note", "hero": "hero-note", "cta": "hero-note",
+                "card": "card-note"}[kind]
+    if platform == "android":
+        label = "Get the Android app" if kind == "hero" else "Get the app"
+        return "<a class='" + link_cls + "' href='" + e + "'>" + label + "</a>"
+    if platform == "ios":
+        return ("<span class='" + link_cls + " btn-disabled'>"
+                "iOS app coming soon</span>")
+    return ("<span class='" + text_cls + "'>"
+            "Download the app on your phone</span>")
+
+
+def landing_page(play_store_url, platform="desktop"):
     return (
         "<!doctype html><html lang='en'><head><meta charset='utf-8' />"
         "<meta name='viewport' content='width=device-width, initial-scale=1' />"
@@ -78,14 +120,14 @@ def landing_page(play_store_url):
         "<div class='wrap'><nav class='top'>"
         "<a class='brand' href='/'>BareLabel</a>"
         "<span><a class='link' href='/lookup'>Try it</a> "
-        "<a class='link' href='" + e + "'>Get the app</a></span></nav></div>"
+        + app_cta(platform, play_store_url, "nav") + "</span></nav></div>"
         "<div class='hero'>"
         "<h1>Know what's in your food.</h1>"
         "<p>Search any grocery product. BareLabel flags the ingredients "
         "you'd rather avoid, scores how clean it is, and finds cleaner "
         "alternates.</p>"
         "<a class='btn btn-light' href='/lookup'>Try it on the web</a>"
-        "<a class='btn btn-outline' href='" + e + "'>Get the Android app</a>"
+        + app_cta(platform, play_store_url, "hero") +
         "</div>"
         "<section><div class='wrap'>"
         "<h2>How it works</h2>"
@@ -118,7 +160,7 @@ def landing_page(play_store_url):
         "<h2>Take it to the store.</h2>"
         "<p>Barcode scanning, price comparisons, and clean alternates "
         "\u2014 in your pocket.</p>"
-        "<a class='btn btn-light' href='" + e + "'>Get BareLabel for Android</a>"
+        + app_cta(platform, play_store_url, "cta") +
         "</div>"
         "<footer>BareLabel \u00b7 Ingredient data: USDA FoodData Central "
         "&amp; Open Food Facts</footer>"
@@ -126,14 +168,13 @@ def landing_page(play_store_url):
     )
 
 
-def lookup_page(query, result, error, play_store_url):
+def lookup_page(query, result, error, play_store_url, platform="desktop"):
     """Search form plus an optional verdict card or error message.
 
     result is (verdict_dict, image_url_or_None); verdict_dict comes from
     verdict.verdict_for.
     """
     esc = lambda s: html.escape(s or "", quote=True)  # noqa: E731
-    e = esc(play_store_url)
     q = esc(query)
     body = ""
     if error:
@@ -169,8 +210,7 @@ def lookup_page(query, result, error, play_store_url):
             + "<p class='note'>Verdict uses BareLabel's default avoid list "
               "(everything it flags). The Android app lets you customize "
               "yours.</p>"
-            + "<p><a class='btn btn-green' href='" + e + "'>"
-              "Get the app</a></p></div>"
+            + "<p>" + app_cta(platform, play_store_url, "card") + "</p></div>"
         )
     title = ("BareLabel lookup: " + q) if query else "BareLabel product lookup"
     return (
@@ -181,7 +221,7 @@ def lookup_page(query, result, error, play_store_url):
         "<div class='wrap'><nav class='top'>"
         "<a class='brand' href='/'>BareLabel</a>"
         "<span><a class='link' href='/lookup'>Try it</a> "
-        "<a class='link' href='" + e + "'>Get the app</a></span></nav>"
+        + app_cta(platform, play_store_url, "nav") + "</span></nav>"
         "<h2 style='margin-top:12px'>Product lookup</h2>"
         "<p class='sub'>Search a product name or paste a barcode number.</p>"
         "<form class='search' action='/lookup' method='get'>"
