@@ -115,7 +115,7 @@ def landing_page(play_store_url, platform="desktop"):
     return (
         "<!doctype html><html lang='en'><head><meta charset='utf-8' />"
         "<meta name='viewport' content='width=device-width, initial-scale=1' />"
-        "<title>BareLabel \u2014 Know what's in your food</title>"
+        "<title>BareLabel: Know what's in your food</title>"
         "<meta name='description' content='Search any grocery product. "
         "BareLabel flags the ingredients you would rather avoid and scores "
         "how clean it is.' />"
@@ -145,7 +145,7 @@ def landing_page(play_store_url, platform="desktop"):
         "<p class='sub'>Three steps between you and a cleaner cart.</p>"
         "<div class='steps'>"
         "<div class='step'><div class='n'>\U0001f50d</div><h3>Search or scan</h3>"
-        "<p>Type a product name or barcode \u2014 or scan it in the Android app.</p></div>"
+        "<p>Type a product name or barcode, or scan it in the Android app.</p></div>"
         "<div class='step'><div class='n'>\u2696\ufe0f</div><h3>Instant verdict</h3>"
         "<p>Every ingredient is checked against your avoid list: CLEAN or DIRTY, "
         "plus a 0\u2013100 Clean Score.</p></div>"
@@ -169,8 +169,8 @@ def landing_page(play_store_url, platform="desktop"):
         "</div></div></section>"
         "<div class='cta'>"
         "<h2>Take it to the store.</h2>"
-        "<p>Barcode scanning, price comparisons, and clean alternates "
-        "\u2014 in your pocket.</p>"
+        "<p>Barcode scanning, price comparisons, and clean alternates:"
+        " in your pocket.</p>"
         + app_cta(platform, play_store_url, "cta") +
         "</div>"
         "<footer>BareLabel \u00b7 Ingredient data: USDA FoodData Central "
