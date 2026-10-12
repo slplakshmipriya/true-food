@@ -116,6 +116,17 @@ def test_verdict_card_explains_binary_verdict_vs_score():
     assert "binary" in html
 
 
+def test_verdict_card_note_names_platform_app():
+    from verdict import verdict_for
+    v = verdict_for("BREAD", "TestBrand", "wheat flour, water, salt")
+    android = lookup_page("bread", (v, None), None, "android")
+    assert "The Android app lets you customize yours." in android
+    ios = lookup_page("bread", (v, None), None, "ios")
+    assert "The iOS app lets you customize yours." in ios
+    desktop = lookup_page("bread", (v, None), None, "desktop")
+    assert "The mobile app lets you customize yours." in desktop
+
+
 def test_landing_page_includes_app_screenshot():
     html = landing_page("android")
     assert "/static/app-screenshot.png" in html

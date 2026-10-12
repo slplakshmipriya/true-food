@@ -229,8 +229,9 @@ def lookup_page(query, result, error, platform="desktop"):
               "ingredient list, 0 to 100.</p>"
             + flagged_html
             + "<p class='note'>Verdict uses BareLabel's default avoid list "
-              "(everything it flags). The Android app lets you customize "
-              "yours.</p>"
+              "(everything it flags). The "
+            + {"android": "Android", "ios": "iOS"}.get(platform, "mobile")
+            + " app lets you customize yours.</p>"
             + "<p>" + app_cta(platform, "card", "lookup") + "</p></div>"
         )
     title = ("BareLabel lookup: " + q) if query else "BareLabel product lookup"
