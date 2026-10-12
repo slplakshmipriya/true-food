@@ -53,6 +53,32 @@ public final class CompareViewBuilder {
     private static final int C_RED_600 = android.graphics.Color.parseColor("#DC2626");
     private static final int C_GRAY_200 = android.graphics.Color.parseColor("#E5E7EB");
 
+    /**
+     * Night-mode-aware text colors. The compare table sits directly on the
+     * window background (not inside a light card), so the hardcoded dark
+     * text used elsewhere is invisible in night mode.
+     */
+    private static boolean isNight(Context context) {
+        int night = context.getResources().getConfiguration().uiMode
+                & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
+        return night == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    /** Product names: near-black by day, near-white at night. */
+    private static int textPrimary(Context context) {
+        return isNight(context) ? Color.parseColor("#F9FAFB") : C_GRAY_900;
+    }
+
+    /** Ingredient names. */
+    private static int textBody(Context context) {
+        return isNight(context) ? Color.parseColor("#E5E7EB") : C_GRAY_800;
+    }
+
+    /** Secondary text: flagged counts, disclosure, legend. */
+    private static int textMuted(Context context) {
+        return isNight(context) ? C_GRAY_400 : C_GRAY_500;
+    }
+
     private CompareViewBuilder() {
     }
 
@@ -173,8 +199,8 @@ public final class CompareViewBuilder {
         TextView name = new TextView(context);
         name.setText(p.displayName());
         name.setTextSize(15f);
+        name.setTextColor(textPrimary(context));
         name.setTypeface(null, Typeface.BOLD);
-        name.setTextColor(C_GRAY_900);
         name.setGravity(Gravity.CENTER);
         name.setMaxLines(3);
         name.setEllipsize(TextUtils.TruncateAt.END);
@@ -198,7 +224,7 @@ public final class CompareViewBuilder {
         int n = p.flagged == null ? 0 : p.flagged.size();
         count.setText(n == 0 ? "No flagged ingredients" : n + " flagged");
         count.setTextSize(12f);
-        count.setTextColor(C_GRAY_500);
+        count.setTextColor(textMuted(context));
         count.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams countParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -216,7 +242,7 @@ public final class CompareViewBuilder {
                 disclosure.setText(
                         com.barelabel.app.affiliate.AffiliateConfig.DISCLOSURE_TEXT);
                 disclosure.setTextSize(10f);
-                disclosure.setTextColor(C_GRAY_500);
+                disclosure.setTextColor(textMuted(context));
                 disclosure.setGravity(Gravity.CENTER);
                 LinearLayout.LayoutParams disclosureParams = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -298,7 +324,7 @@ public final class CompareViewBuilder {
         TextView name = new TextView(context);
         name.setText(ingredient);
         name.setTextSize(14f);
-        name.setTextColor(C_GRAY_800);
+        name.setTextColor(textBody(context));
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         nameParams.leftMargin = dp(context, 8);
@@ -361,7 +387,7 @@ public final class CompareViewBuilder {
         appendLegendItem(sb, "\u2296 Not in product", "#9CA3AF");
         legend.setText(sb);
         legend.setTextSize(12f);
-        legend.setTextColor(C_GRAY_500);
+        legend.setTextColor(textMuted(context));
         legend.setGravity(Gravity.CENTER);
         legend.setPadding(0, dp(context, 4), 0, dp(context, 8));
         return legend;
