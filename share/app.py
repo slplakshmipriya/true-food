@@ -33,6 +33,12 @@ from pages import detect_platform, landing_page, lookup_page
 from cache import LruCache, cache_key
 from stats import stats
 from analytics import client_id_for, track
+from security import (
+    MAX_QUERY_LEN,
+    SECURITY_HEADERS,
+    sanitize_gtin,
+    sanitize_image_url,
+)
 from verdict import (
     ranked_candidates,
     select_top_pick,
@@ -52,6 +58,20 @@ ASSETLINKS_PATH = Path(__file__).with_name("assetlinks.json")
 STATIC_DIR = Path(__file__).with_name("static")
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    """Cheap hardening: MIME-sniffing off, no framing, no referrer leak.
+
+    Deliberately no Content-Security-Policy: the pages are zero-JS with
+    inline styles and images from arbitrary https hosts, so a wrong CSP
+    breaks rendering while adding little here.
+    """
+    response = await call_next(request)
+    for header, value in SECURITY_HEADERS.items():
+        response.headers[header] = value
+    return response
 
 # Merchant name (lowercased) -> site-search URL template for the product.
 MERCHANT_SEARCH = {
@@ -160,7 +180,7 @@ def product_page(
     off_image, off_name = (None, None)
     if not img.strip() or not n.strip():
         off_image, off_name = off_product(gtin)
-    name = n.strip() or off_name or "A grocery product"
+    name = (n.strip() or off_name or "A grocery product")[:MAX_QUERY_LEN]
 
     if verdict == "clean":
         badge, badge_color = "\u2713 CLEAN", "#166534"
@@ -185,7 +205,9 @@ def product_page(
     canonical = f"https://{SHARE_HOST}/p/{gtin}"
 
     # Product image: prefer the app's (already verified), else Open Food Facts.
-    image = img.strip() or off_image or ""
+    # The app-supplied img= param is scheme-allowlisted: javascript:/data:
+    # URLs never reach the <img> tag.
+    image = sanitize_image_url(img) or off_image or ""
     og_image = (
         f'<meta property="og:image" content="{esc(image)}" />' if image else ""
     )
@@ -194,7 +216,7 @@ def product_page(
     )
 
     # Retailer chips from the app's merchant names (m=a,b,c).
-    merchants = [x.strip() for x in m.split(",") if x.strip()][:6]
+    merchants = [x.strip()[:MAX_QUERY_LEN] for x in m.split(",") if x.strip()][:6]
     retailer_html = ""
     if merchants:
         chips = " ".join(
@@ -357,7 +379,7 @@ def lookup_product(query):
     if food is None:
         return None, None
     image = None
-    gtin = (food.get("gtinUpc") or "").strip()
+    gtin = sanitize_gtin(food.get("gtinUpc"))
     if gtin:
         image, _ = off_product(gtin)
     return food, image
@@ -366,7 +388,7 @@ def lookup_product(query):
 @app.get("/lookup", response_class=HTMLResponse)
 def lookup(request: Request, q: str = Query(default="")):
     esc = lambda s: html.escape(s or "", quote=True)  # noqa: E731
-    query = (q or "").strip()
+    query = (q or "").strip()[:MAX_QUERY_LEN]
     platform = detect_platform(request.headers.get("user-agent"))
     if not query:
         return HTMLResponse(lookup_page(None, None, None, platform))
