@@ -189,4 +189,10 @@ public final class AnalyticsTracker {
         b.putString("source", source);
         log("product_saved", b);
     }
+
+    public static void productShared(String source) {
+        Bundle b = new Bundle();
+        b.putString("source", source);
+        log("product_shared", b);
+    }
 }

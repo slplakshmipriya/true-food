@@ -336,6 +336,15 @@
                     android:layout_height="64dp"
                     android:layout_marginStart="12dp"
                     android:contentDescription="Clean Score" />
+
+                <ImageButton
+                    android:id="@+id/shareVerdictButton"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginStart="8dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Share product"
+                    android:src="@drawable/ic_share" />
             </LinearLayout>
 
             <TextView

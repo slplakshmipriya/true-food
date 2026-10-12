@@ -23,11 +23,27 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- App Links: https://barelabel.online/p/{gtin} opens the product.
+                 Requires assetlinks.json served at
+                 https://barelabel.online/.well-known/assetlinks.json (see share/). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="https"
+                    android:host="barelabel.online"
+                    android:pathPrefix="/p/" />
             </intent-filter>
         </activity>
 
@@ -36,6 +52,17 @@
             android:name=".BarcodeScannerActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+
+        <!-- Serves share-sheet images (product photo or app logo). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/filepaths" />
+        </provider>
 
     </application>
 

@@ -69,6 +69,17 @@ public final class PriceFetcher {
         void onPrice(PriceResult result);
     }
 
+    /**
+     * Synchronous cache read: offers already fetched for this GTIN, or null
+     * if never looked up (or the GTIN is invalid). Never triggers a network
+     * fetch — for share sheets and other best-effort call sites.
+     */
+    public static java.util.List<UpcOffers.Offer> getCached(String gtinRaw) {
+        String gtin = UpcOffers.normalizeGtin(gtinRaw);
+        if (gtin.isEmpty()) return null;
+        return OFFERS_CACHE.get(gtin);
+    }
+
     /** Transport/HTTP failure: never cached as a miss, always retried later. */
     private static final class PriceTransportException extends Exception {
         PriceTransportException(String msg) { super(msg); }

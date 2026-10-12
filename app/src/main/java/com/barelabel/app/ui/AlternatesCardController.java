@@ -133,6 +133,17 @@ public class AlternatesCardController {
 
     private SaveListener saveListener;
 
+    /** Host shares an alternate via the system share sheet. */
+    public interface ShareListener {
+        void onShareProduct(ProductResult p);
+    }
+
+    private ShareListener shareListener;
+
+    public void setShareListener(ShareListener listener) {
+        this.shareListener = listener;
+    }
+
     /** Host opens this alternate as the next search (its verdict card). */
     public interface AlternateSearchListener {
         void onOpenAlternate(ProductResult product);
@@ -1099,6 +1110,14 @@ public class AlternatesCardController {
                 }
             });
             actionRow.addView(saveButton);
+        }
+
+        if (shareListener != null) {
+            android.widget.ImageButton shareButton = makeIconButton(ctx,
+                    R.drawable.ic_share, C_WHITE, C_BLUE_600, "Share");
+            shareButton.setOnClickListener(v ->
+                    shareListener.onShareProduct(finalAlt));
+            actionRow.addView(shareButton);
         }
 
         if (comparePickListener != null) {
