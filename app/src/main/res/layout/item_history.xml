@@ -63,4 +63,42 @@
         android:textColor="#6B7280"
         android:textSize="13sp" />
 
+    <!-- Retailer offers + Buy, mirroring the search-results alternate rows.
+         GONE until offers resolve for the row's GTIN. -->
+    <LinearLayout
+        android:id="@+id/historyOfferRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/historyPrice"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#047857"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/historyRetailerStrip"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal" />
+
+        <ImageButton
+            android:id="@+id/historyBuyButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Buy"
+            android:src="@drawable/ic_cart_search" />
+    </LinearLayout>
+
 </LinearLayout>
