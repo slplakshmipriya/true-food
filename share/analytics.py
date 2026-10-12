@@ -24,6 +24,10 @@ MEASUREMENT_ID = os.environ.get("GA_MEASUREMENT_ID", "")
 API_SECRET = os.environ.get("GA_API_SECRET", "")
 _MP_URL = "https://www.google-analytics.com/mp/collect"
 
+# Cap concurrent outbound GA connections so a traffic flood can't pile up
+# threads faster than the 5s urlopen timeout drains them.
+_GA_SEMAPHORE = threading.Semaphore(20)
+
 
 def configured():
     return bool(MEASUREMENT_ID and API_SECRET)
@@ -39,16 +43,22 @@ def client_id_for(request):
 
 
 def _send(payload):
-    req = urllib.request.Request(
-        f"{_MP_URL}?measurement_id={MEASUREMENT_ID}&api_secret={API_SECRET}",
-        data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    # Bound concurrent GA sends; drop (don't queue) under extreme load.
+    if not _GA_SEMAPHORE.acquire(blocking=False):
+        return
     try:
-        urllib.request.urlopen(req, timeout=5)
-    except Exception as e:  # analytics must never break a real request
-        print(f"GA event send failed: {type(e).__name__}")
+        req = urllib.request.Request(
+            f"{_MP_URL}?measurement_id={MEASUREMENT_ID}&api_secret={API_SECRET}",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            urllib.request.urlopen(req, timeout=5)
+        except Exception as e:  # analytics must never break a real request
+            print(f"GA event send failed: {type(e).__name__}")
+    finally:
+        _GA_SEMAPHORE.release()
 
 
 def _payload(event_name, params, client_id):

@@ -136,6 +136,33 @@ gcloud run services update barelabel-share --region us-east1 \
 Events show in Realtime within a minute; standard reports take up to
 ~24h to populate.
 
+## Security
+
+From the 2026-10-12 review (no critical/high issues found; XSS probes
+verified escaped live):
+
+- **Security headers** on every response (`X-Content-Type-Options:
+  nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`).
+  No CSP by design: the pages are zero-JS with inline styles and images
+  from arbitrary https hosts.
+- **Rate limiting** (container-local, per IP): 30 req/min on `/lookup`,
+  120 req/min on `/` and `/p/{gtin}`. Over the limit → `429` with
+  `Retry-After: 60`. Back it with `--max-instances` on the deploy so a
+  flood can't scale cost either.
+- **`/stats` is token-gated**: set the `STATS_TOKEN` env var and pass it
+  as the `X-Stats-Token` header. Unset or wrong → `404`. (Fail closed.)
+- **Reflected inputs capped** at 200 chars (`q`, `n`, `m`); `img=` only
+  allows `http(s)` URLs; USDA `gtinUpc` is digit-checked before use.
+- USDA failures never log the API key (status + query only).
+
+```bash
+# set the /stats token (do this in Cloud Shell, never paste it in chat)
+gcloud run services update barelabel-share --region us-east1 \
+  --project garednx --update-env-vars STATS_TOKEN=YOUR_LONG_RANDOM_TOKEN
+# then: curl -H "X-Stats-Token: YOUR_LONG_RANDOM_TOKEN" \
+#   https://barelabel.online/stats
+```
+
 ## Local run
 
 ```bash

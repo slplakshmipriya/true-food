@@ -101,7 +101,17 @@ def test_go_play_redirects_and_counts_click():
 
 
 def test_stats_endpoint_returns_snapshot():
+    from starlette.requests import Request
     stats.reset()
     stats.incr("landing:desktop")
-    body = json.loads(app_module.stats_view().body.decode())
+    orig = app_module.STATS_TOKEN
+    app_module.STATS_TOKEN = "s3cret"
+    try:
+        req = Request({
+            "type": "http", "method": "GET", "path": "/stats",
+            "headers": [(b"x-stats-token", b"s3cret")],
+        })
+        body = json.loads(app_module.stats_view(req).body.decode())
+    finally:
+        app_module.STATS_TOKEN = orig
     assert body == {"landing:desktop": 1}

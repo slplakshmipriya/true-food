@@ -16,10 +16,12 @@ that opens the product in the app when installed and falls through to the
 Play Store listing otherwise.
 """
 
+import hmac
 import html
 import json
 import os
 import re
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -33,6 +35,7 @@ from pages import detect_platform, landing_page, lookup_page
 from cache import LruCache, cache_key
 from stats import stats
 from analytics import client_id_for, track
+from ratelimit import RateLimiter, client_ip
 from security import (
     MAX_QUERY_LEN,
     SECURITY_HEADERS,
@@ -58,6 +61,18 @@ ASSETLINKS_PATH = Path(__file__).with_name("assetlinks.json")
 STATIC_DIR = Path(__file__).with_name("static")
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+def rate_limited(request, limiter):
+    """429 response when the client is over the limit, else None."""
+    if limiter.allow(client_ip(request)):
+        return None
+    return HTMLResponse(
+        "<h1>Too many requests</h1>"
+        "<p>Please slow down and try again in a minute.</p>",
+        status_code=429,
+        headers={"Retry-After": "60"},
+    )
 
 
 @app.middleware("http")
@@ -88,6 +103,15 @@ MERCHANT_SEARCH = {
 # GTIN -> (fetched_at_epoch, image_url|None, product_name|None). 24h TTL.
 _OFF_CACHE: dict[str, tuple[float, str | None, str | None]] = {}
 _OFF_TTL = 24 * 3600
+_OFF_LOCK = threading.Lock()
+
+# Upstream-fanout routes get strict limits (each lookup = several USDA/OFF
+# calls); cheap pages get a looser one. Container-local, like the cache.
+_lookup_limiter = RateLimiter(max_hits=30, window_secs=60)
+_page_limiter = RateLimiter(max_hits=120, window_secs=60)
+
+# Shared secret for /stats (set STATS_TOKEN env var; unset = 404 always).
+STATS_TOKEN = os.environ.get("STATS_TOKEN", "")
 
 
 def merchant_link(merchant: str, product_name: str) -> str:
@@ -106,9 +130,10 @@ def off_product(gtin: str) -> tuple[str | None, str | None]:
     fills them in — which keeps shared URLs short.
     """
     now = time.time()
-    hit = _OFF_CACHE.get(gtin)
-    if hit is not None and now - hit[0] < _OFF_TTL:
-        return hit[1], hit[2]
+    with _OFF_LOCK:
+        hit = _OFF_CACHE.get(gtin)
+        if hit is not None and now - hit[0] < _OFF_TTL:
+            return hit[1], hit[2]
     image: str | None = None
     name: str | None = None
     try:
@@ -123,9 +148,10 @@ def off_product(gtin: str) -> tuple[str | None, str | None]:
         name = product.get("product_name") or None
     except Exception:
         pass
-    if len(_OFF_CACHE) > 2000:
-        _OFF_CACHE.clear()
-    _OFF_CACHE[gtin] = (now, image, name)
+    with _OFF_LOCK:
+        if len(_OFF_CACHE) > 2000:
+            _OFF_CACHE.clear()
+        _OFF_CACHE[gtin] = (now, image, name)
     return image, name
 
 
@@ -142,9 +168,13 @@ def go_play(request: Request, src: str = Query(default="")):
 
 
 @app.get("/stats")
-def stats_view():
-    """Analytics snapshot as JSON. Container-local: resets on cold
-    start / new revisions, per-instance counts."""
+def stats_view(request: Request):
+    """Analytics snapshot as JSON. Gated by the STATS_TOKEN env var
+    (X-Stats-Token header); 404 when unset or wrong. Container-local:
+    resets on cold start / new revisions, per-instance counts."""
+    token = request.headers.get("x-stats-token", "")
+    if not STATS_TOKEN or not hmac.compare_digest(token, STATS_TOKEN):
+        return JSONResponse({"error": "not found"}, status_code=404)
     return JSONResponse(stats.snapshot())
 
 
@@ -160,6 +190,7 @@ def assetlinks():
 
 @app.get("/p/{gtin}", response_class=HTMLResponse)
 def product_page(
+    request: Request,
     gtin: str,
     v: str = Query(default=""),
     score: int = Query(default=-1),
@@ -170,6 +201,9 @@ def product_page(
 ):
     if not GTIN_RE.match(gtin):
         return HTMLResponse("<h1>Invalid product link</h1>", status_code=404)
+    limited = rate_limited(request, _page_limiter)
+    if limited is not None:
+        return limited
 
     verdict = "clean" if v == "clean" else ("dirty" if v == "dirty" else "")
     esc = lambda s: html.escape(s, quote=True)  # noqa: E731
@@ -281,6 +315,9 @@ font-weight:600}}
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
+    limited = rate_limited(request, _page_limiter)
+    if limited is not None:
+        return limited
     platform = detect_platform(request.headers.get("user-agent"))
     stats.incr(f"landing:{platform}")
     track("landing_view", {"platform": platform}, client_id_for(request))
@@ -387,6 +424,9 @@ def lookup_product(query):
 
 @app.get("/lookup", response_class=HTMLResponse)
 def lookup(request: Request, q: str = Query(default="")):
+    limited = rate_limited(request, _lookup_limiter)
+    if limited is not None:
+        return limited
     esc = lambda s: html.escape(s or "", quote=True)  # noqa: E731
     query = (q or "").strip()[:MAX_QUERY_LEN]
     platform = detect_platform(request.headers.get("user-agent"))
