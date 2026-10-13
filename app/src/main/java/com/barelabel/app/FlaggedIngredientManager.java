@@ -261,6 +261,7 @@ public class FlaggedIngredientManager {
         return out;
     }
 
+    /**
      * Pure matching pass over the precompiled terms — no asset I/O, no
      * regex compilation, no preference reads. This is the hot path.
      */
