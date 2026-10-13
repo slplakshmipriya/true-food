@@ -1,6 +1,7 @@
 package com.barelabel.app;
 
 import android.content.Intent;
+import android.net.Uri;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -25,6 +26,10 @@ import java.util.Iterator;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import com.google.mlkit.vision.common.InputImage;
+import com.google.mlkit.vision.text.TextRecognition;
+import com.google.mlkit.vision.text.TextRecognizer;
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
@@ -60,6 +65,7 @@ import com.barelabel.app.images.ProductImageResolver;
 import com.barelabel.app.search.BarcodeSeed;
 import com.barelabel.app.search.CleanAlternateFinder;
 import com.barelabel.app.search.DisambiguationDecider;
+import com.barelabel.app.search.OcrCorrector;
 import com.barelabel.app.ui.AlternatesCardController;
 import com.barelabel.app.ui.CompareViewBuilder;
 import com.barelabel.app.ui.ProductDetailDialog;
@@ -147,6 +153,28 @@ public class MainActivity extends AppCompatActivity {
 
     private final Set<String> superiorTerms = new HashSet<>();
 
+    private final ActivityResultLauncher<Intent> ingredientScanLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                    String text = result.getData().getStringExtra(
+                            IngredientScanActivity.EXTRA_INGREDIENT_TEXT);
+                    if (text != null && !text.trim().isEmpty()) {
+                        onIngredientTextScanned(text);
+                    }
+                }
+            }
+    );
+
+    private final ActivityResultLauncher<String> galleryLauncher = registerForActivityResult(
+            new ActivityResultContracts.GetContent(),
+            uri -> {
+                if (uri != null) {
+                    ocrGalleryImage(uri);
+                }
+            }
+    );
+
     private final ActivityResultLauncher<Intent> barcodeLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
@@ -206,6 +234,10 @@ protected void onCreate(Bundle savedInstanceState) {
     Button scanHeroButton = findViewById(R.id.scanHeroButton);
     if (scanHeroButton != null) {
         scanHeroButton.setOnClickListener(v -> openBarcodeScanner());
+    }
+    Button scanLabelButton = findViewById(R.id.scanLabelButton);
+    if (scanLabelButton != null) {
+        scanLabelButton.setOnClickListener(v -> showLabelScanChooser());
     }
 
     // Recent scans strip (Search tab): tap a card to re-run that search.
@@ -1465,6 +1497,116 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
     private void openBarcodeScanner() {
         Intent intent = new Intent(this, BarcodeScannerActivity.class);
         barcodeLauncher.launch(intent);
+    }
+
+    /** Chooser for the ingredient-label scan: camera capture or gallery photo. */
+    private void showLabelScanChooser() {
+        new AlertDialog.Builder(this)
+                .setTitle("Scan ingredient label")
+                .setItems(new String[]{"Take photo", "Choose from gallery"},
+                        (dialog, which) -> {
+                            if (which == 0) {
+                                ingredientScanLauncher.launch(
+                                        new Intent(this, IngredientScanActivity.class));
+                            } else {
+                                galleryLauncher.launch("image/*");
+                            }
+                        })
+                .show();
+    }
+
+    /** OCRs a gallery image with ML Kit, then runs the scanned-label pipeline. */
+    private void ocrGalleryImage(Uri uri) {
+        if (progress != null) progress.setVisibility(View.VISIBLE);
+        new Thread(() -> {
+            try {
+                InputImage image = InputImage.fromFilePath(this, uri);
+                TextRecognizer recognizer =
+                        TextRecognition.getClient(TextRecognizerOptions.DEFAULT);
+                recognizer.process(image)
+                        .addOnSuccessListener(visionText -> {
+                            recognizer.close();
+                            String text = visionText.getText() == null
+                                    ? "" : visionText.getText().trim();
+                            if (text.replaceAll("\\s+", "").length() >= 15) {
+                                onIngredientTextScanned(text);
+                            } else {
+                                runOnUiThread(() -> {
+                                    if (progress != null)
+                                        progress.setVisibility(View.GONE);
+                                    Toast.makeText(MainActivity.this,
+                                            "No text found in that photo.",
+                                            Toast.LENGTH_SHORT).show();
+                                });
+                            }
+                        })
+                        .addOnFailureListener(e -> {
+                            recognizer.close();
+                            runOnUiThread(() -> {
+                                if (progress != null)
+                                    progress.setVisibility(View.GONE);
+                                Toast.makeText(MainActivity.this,
+                                        "Couldn't read that photo.",
+                                        Toast.LENGTH_SHORT).show();
+                            });
+                        });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    if (progress != null) progress.setVisibility(View.GONE);
+                    Toast.makeText(MainActivity.this,
+                            "Couldn't open that photo.",
+                            Toast.LENGTH_SHORT).show();
+                });
+            }
+        }).start();
+    }
+
+    /**
+     * Scan -> verdict pipeline for OCR'd ingredient text (camera or gallery).
+     * No confirmation screen: OcrCorrector fixes OCR misspellings against the
+     * flagged-ingredient dictionary before the verdict runs.
+     */
+    private void onIngredientTextScanned(String ocrText) {
+        if (progress != null) progress.setVisibility(View.VISIBLE);
+        if (statusText != null) {
+            statusText.setText("Checking ingredients\u2026");
+            statusText.setVisibility(View.VISIBLE);
+        }
+        new Thread(() -> {
+            Set<String> dictWords = new HashSet<>();
+            for (String term : FlaggedIngredientManager.getFlaggedTerms(
+                    MainActivity.this)) {
+                for (String w : term.toLowerCase(Locale.US).split("[^a-z]+")) {
+                    if (!w.isEmpty()) {
+                        dictWords.add(w);
+                    }
+                }
+            }
+            String corrected = OcrCorrector.correct(ocrText, dictWords);
+            FlaggedIngredientManager.MatchResult matchResult =
+                    FlaggedIngredientManager.analyzeIngredients(
+                            MainActivity.this, corrected);
+            ProductResult result = new ProductResult(
+                    true, "Scanned label", "", corrected, matchResult);
+            runOnUiThread(() -> {
+                if (progress != null) progress.setVisibility(View.GONE);
+                showScannedLabelResult(result);
+            });
+        }).start();
+    }
+
+    /**
+     * Renders a scanned-label verdict through the normal flow. The label came
+     * from the camera, not USDA: alternates, the "no exact match" notice and
+     * the USDA source line are all suppressed.
+     */
+    private void showScannedLabelResult(ProductResult result) {
+        showResult(result, "Uncategorized", false,
+                Collections.emptySet(), Collections.emptyMap(), false);
+        alternatesController.hide();
+        updateSourceLine();
+        updateStickyBar();
+        if (matchNoticeText != null) matchNoticeText.setVisibility(View.GONE);
     }
 
     private void lookupBarcodeAndSearch(String gtin) {

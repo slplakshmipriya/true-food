@@ -83,6 +83,8 @@ dependencies {
     implementation 'com.google.firebase:firebase-analytics'
 // ML Kit Barcode Scanning (Free & On-Device)
     implementation 'com.google.mlkit:barcode-scanning:17.3.0'
+// ML Kit Text Recognition, bundled model (Free & On-Device)
+    implementation 'com.google.mlkit:text-recognition:16.0.1'
 // Glide: product image loading (Open Food Facts URLs)
     implementation 'com.github.bumptech.glide:glide:4.16.0'
 

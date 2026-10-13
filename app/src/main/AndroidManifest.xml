@@ -53,6 +53,12 @@
             android:exported="false"
             android:screenOrientation="portrait" />
 
+        <!-- Ingredient Label Scanner Activity -->
+        <activity
+            android:name=".IngredientScanActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
         <!-- Serves share-sheet images (product photo or app logo). -->
         <provider
             android:name="androidx.core.content.FileProvider"

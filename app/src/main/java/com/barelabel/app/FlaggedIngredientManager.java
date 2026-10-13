@@ -247,6 +247,20 @@ public class FlaggedIngredientManager {
     }
 
     /**
+     * Raw flagged-ingredient terms (e.g. "monosodium glutamate") for
+     * dictionary uses such as OCR correction. Backed by the same
+     * once-per-process parse as the verdict matching.
+     */
+    public static Set<String> getFlaggedTerms(Context context) {
+        Set<String> out = new HashSet<>();
+        for (CompiledTerm t : getCompiledTerms(context)) {
+            if (t.displayTerm != null && !t.displayTerm.isEmpty()) {
+                out.add(t.displayTerm);
+            }
+        }
+        return out;
+    }
+
      * Pure matching pass over the precompiled terms — no asset I/O, no
      * regex compilation, no preference reads. This is the hot path.
      */
