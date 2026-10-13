@@ -431,4 +431,47 @@ public class ProductImageResolver {
         if (info != null && info.hasName()) return info.displayName();
         return fallback;
     }
+
+    /**
+     * Synchronous Open Food Facts product-name lookup for the barcode-scan
+     * fallback in MainActivity.lookupBarcodeAndSearch. MUST be called off the
+     * main thread — it can hit disk and network.
+     *
+     * <p>Cache discipline mirrors {@link #resolve}: memory first (honoring
+     * negative-cached genuine misses), then disk, then one network fetch whose
+     * result is written through to both caches. Transport failures are never
+     * negative-cached and put the key on the same failure cooldown as
+     * {@link #resolve}.
+     *
+     * @return the OFF display name (e.g. "Rice Krispies Treats Original"),
+     *         or "" when OFF has no record for the GTIN or the fetch fails.
+     */
+    public static String fetchDisplayName(Context context, String gtin) {
+        final Context appContext = context.getApplicationContext();
+        final String key = normalize(gtin);
+        if (key.isEmpty()) return "";
+        synchronized (memoryCache) {
+            if (memoryCache.containsKey(key)) {
+                OffProductInfo mem = memoryCache.get(key);
+                return mem != null && mem.hasName() ? mem.displayName() : "";
+            }
+        }
+        if (inFailureCooldown(key)) return "";
+        OffProductInfo disk = readDiskCache(appContext, key);
+        if (disk != null || diskHas(key, appContext)) {
+            // Null disk here = OFF-confirmed genuine miss (negative-cached).
+            putMemory(key, disk);
+            return disk != null && disk.hasName() ? disk.displayName() : "";
+        }
+        try {
+            OffProductInfo info = fetchFromOff(key);
+            writeDiskCache(appContext, key, info);
+            putMemory(key, info);
+            return info != null && info.hasName() ? info.displayName() : "";
+        } catch (IOException e) {
+            Log.w(TAG, "OFF name fallback failed for " + key, e);
+            markFailure(key);
+            return "";
+        }
+    }
 }
