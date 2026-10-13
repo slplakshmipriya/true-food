@@ -1563,6 +1563,8 @@ private void setupCategoryFilterPanel() {
         CheckBox checkBox = new CheckBox(this);
         checkBox.setText(category);
         checkBox.setTextSize(12f);
+        // The filter panel is light; the theme default text color is not.
+        checkBox.setTextColor(Color.parseColor("#111827"));
 
         // Check preference manager (or SharedPreferences) for sticky state
         boolean isEnabled = CategoryPreferenceManager.isCategoryEnabled(this, category);
