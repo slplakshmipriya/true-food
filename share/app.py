@@ -28,7 +28,9 @@ import urllib.request
 from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import (
+    HTMLResponse, JSONResponse, RedirectResponse, Response,
+)
 from fastapi.staticfiles import StaticFiles
 
 from pages import detect_platform, landing_page, lookup_page
@@ -178,6 +180,30 @@ def stats_view(request: Request):
     return JSONResponse(stats.snapshot())
 
 
+@app.get("/robots.txt", response_class=Response)
+def robots_txt():
+    return Response(
+        "User-agent: *\nAllow: /\n"
+        f"Sitemap: https://{SHARE_HOST}/sitemap.xml\n",
+        media_type="text/plain",
+    )
+
+
+@app.get("/sitemap.xml", response_class=Response)
+def sitemap_xml():
+    urls = "\n".join(
+        f"  <url><loc>https://{SHARE_HOST}{path}</loc>"
+        f"<changefreq>weekly</changefreq><priority>{prio}</priority></url>"
+        for path, prio in [("/", "1.0"), ("/lookup", "0.8")]
+    )
+    return Response(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{urls}\n</urlset>",
+        media_type="application/xml",
+    )
+
+
 @app.get("/.well-known/assetlinks.json")
 def assetlinks():
     try:
@@ -281,6 +307,8 @@ def product_page(
 <meta property="og:description" content="{esc(description)}" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="{esc(canonical)}" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="canonical" href="{esc(canonical)}" />
 {og_image}
 <style>
 body{{font-family:system-ui,sans-serif;max-width:560px;margin:48px auto;
