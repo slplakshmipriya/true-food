@@ -1522,7 +1522,7 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
             try {
                 InputImage image = InputImage.fromFilePath(this, uri);
                 TextRecognizer recognizer =
-                        TextRecognition.getClient(TextRecognizerOptions.DEFAULT);
+                        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
                 recognizer.process(image)
                         .addOnSuccessListener(visionText -> {
                             recognizer.close();

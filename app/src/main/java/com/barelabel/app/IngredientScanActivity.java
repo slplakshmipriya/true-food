@@ -80,7 +80,7 @@ public class IngredientScanActivity extends AppCompatActivity {
 
         setContentView(root);
 
-        recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT);
+        recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
         cameraExecutor = Executors.newSingleThreadExecutor();
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
