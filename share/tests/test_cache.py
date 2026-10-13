@@ -134,7 +134,9 @@ def test_lookup_route_uses_cache():
         first = app_module.lookup(_req(), q="cache-test-bread-xyz")
         second = app_module.lookup(_req(), q="  CACHE-TEST-BREAD-XYZ ")  # key normalizes
         assert calls["usda"] == 1  # second lookup served from cache
-        assert calls["off"] == 1
+        # Image is fetched at render time for the cleanest pick, once per
+        # page view (not part of the cached record).
+        assert calls["off"] == 2
         body1 = first.body.decode()
         body2 = second.body.decode()
         # Same verdict rendered both times (page echoes the raw query,

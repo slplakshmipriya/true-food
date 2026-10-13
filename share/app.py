@@ -33,7 +33,7 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 
-from pages import detect_platform, landing_page, lookup_page
+from pages import detect_platform, landing_page, lookup_page, results_page
 from cache import LruCache, cache_key
 from stats import stats
 from analytics import client_id_for, track
@@ -45,6 +45,8 @@ from security import (
     sanitize_image_url,
 )
 from verdict import (
+    is_spam_brand,
+    normalize,
     ranked_candidates,
     select_top_pick,
     verdict_for,
@@ -58,6 +60,7 @@ PLAY_STORE_URL = (
 SHARE_HOST = "barelabel.online"
 APP_PACKAGE = "com.barelabel.app"
 GTIN_RE = re.compile(r"^[0-9]{8,14}$")
+RESULT_ROWS = 10  # candidates shown on the results list page
 
 ASSETLINKS_PATH = Path(__file__).with_name("assetlinks.json")
 STATIC_DIR = Path(__file__).with_name("static")
@@ -415,39 +418,106 @@ def usda_search(query, page_size=25):
     raise err
 
 
-def pick_product(foods, query):
-    """Mirror the app: exact GTIN match, else the ranked top pick."""
-    if not foods:
-        return None
-    if GTIN_RE.match(query or ""):
-        needle = query.lstrip("0")
-        for f in foods:
-            stored = (f.get("gtinUpc") or "").lstrip("0")
-            if stored and stored == needle:
-                return f
-    return select_top_pick(foods, ranked_candidates(foods, query))
+def search_foods(query):
+    """(all_foods, visible_foods) for a product-name or barcode query.
 
-
-def lookup_product(query):
-    """(usda_food, off_image_url) for a product-name or barcode query."""
+    visible_foods is ranked with brand-spam filtered out, mirroring the
+    app's ranking. Barcode digits USDA doesn't know fall back to an OFF
+    name search so results still come from the closest USDA records.
+    Raises UsdaError when the USDA request fails.
+    """
     query = (query or "").strip()
     if not query:
-        return None, None
+        return [], []
     foods = usda_search(query)
-    # Barcode digits USDA doesn't know: fall back to an OFF name search so
-    # the verdict still runs on the closest USDA record.
     if not foods and GTIN_RE.match(query):
         _, off_name = off_product(query)
         if off_name:
             foods = usda_search(off_name)
-    food = pick_product(foods, query)
-    if food is None:
-        return None, None
-    image = None
+    visible = [f for f in ranked_candidates(foods, query)
+               if not is_spam_brand(f.get("brandOwner") or "")]
+    return foods, visible
+
+
+def get_foods(query):
+    """Cached search_foods (misses and errors are never cached)."""
+    key = cache_key(query)
+    cached = _lookup_cache.get(key)
+    if cached is not None:
+        return cached["foods"], cached["visible"]
+    foods, visible = search_foods(query)
+    if foods:
+        _lookup_cache.put(key, {"foods": foods, "visible": visible})
+    return foods, visible
+
+
+def exact_gtin_match(foods, query):
+    """GTIN-exact hit for the barcode path (leading zeros ignored)."""
+    needle = (query or "").lstrip("0")
+    for f in foods or []:
+        stored = (f.get("gtinUpc") or "").lstrip("0")
+        if stored and stored == needle:
+            return f
+    return None
+
+
+def is_exact_product_match(food, query):
+    """True when the top candidate unambiguously IS the queried product.
+
+    Normalized description equality only: "cheez-it" matches "Cheez-It",
+    but the generic "bread" never equals "Whole Wheat Bread". This keeps
+    the single-verdict fast path for branded queries without a fragile
+    generic-vs-brand classifier; everything else gets the results list.
+    """
+    if not food or not query:
+        return False
+    return normalize(food.get("description")) == normalize(query)
+
+
+def food_verdict(food):
+    """(verdict_dict, has_ingredients) for one USDA food record."""
+    brand = food.get("brandName") or food.get("brandOwner") or ""
+    ingredients = (food.get("ingredients") or "").strip()
+    return verdict_for(food.get("description") or "", brand,
+                       food.get("ingredients") or ""), bool(ingredients)
+
+
+def food_image(food):
+    """OFF image URL for a food record, or None."""
     gtin = sanitize_gtin(food.get("gtinUpc"))
-    if gtin:
-        image, _ = off_product(gtin)
-    return food, image
+    if not gtin:
+        return None
+    image, _ = off_product(gtin)
+    return sanitize_image_url(image) if image else None
+
+
+def render_verdict(query, food, platform):
+    """Full single-product verdict page (shared by /lookup and /v)."""
+    verdict, _ = food_verdict(food)
+    return lookup_page(query, (verdict, food_image(food)), None, platform)
+
+
+def results_data(visible):
+    """(cleanest, rows) for the results list page.
+
+    cleanest is (food, verdict, image_url) or None; rows are
+    [(food, verdict_or_None)] in rank order, cleanest excluded.
+    Products without ingredient data get no verdict and can never win
+    the cleanest pick (empty ingredients would score a false 100).
+    """
+    rows, cleanest = [], None
+    for food in visible[:RESULT_ROWS]:
+        verdict, has_data = food_verdict(food)
+        rows.append((food, verdict if has_data else None))
+        if has_data and (cleanest is None
+                         or verdict["score"] > cleanest[1]["score"]):
+            cleanest = (food, verdict)
+    if cleanest is None:
+        return None, rows
+    image = food_image(cleanest[0])
+    rows = [(f, v) for f, v in rows
+            if f.get("fdcId") != cleanest[0].get("fdcId")]
+    return (cleanest[0], cleanest[1], image), rows
 
 
 @app.get("/lookup", response_class=HTMLResponse)
@@ -455,7 +525,6 @@ def lookup(request: Request, q: str = Query(default="")):
     limited = rate_limited(request, _lookup_limiter)
     if limited is not None:
         return limited
-    esc = lambda s: html.escape(s or "", quote=True)  # noqa: E731
     query = (q or "").strip()[:MAX_QUERY_LEN]
     platform = detect_platform(request.headers.get("user-agent"))
     if not query:
@@ -469,31 +538,60 @@ def lookup(request: Request, q: str = Query(default="")):
             query, None,
             "Product search isn't configured on this server yet.",
             platform))
-    key = cache_key(query)
-    cached = _lookup_cache.get(key)
-    if cached is not None:
-        food, image = cached["food"], cached["image"]
-    else:
-        food, image = None, None
-        try:
-            food, image = lookup_product(query)
-        except UsdaError:
+    try:
+        foods, visible = get_foods(query)
+    except UsdaError:
+        return HTMLResponse(lookup_page(
+            query, None,
+            "Product search is temporarily unavailable — please try again.",
+            platform))
+    if is_barcode:
+        # Barcode: exact GTIN hit, else the ranked top pick (old behavior).
+        food = exact_gtin_match(foods, query)
+        if food is None:
+            food = select_top_pick(foods, ranked_candidates(foods, query))
+        if food is None:
             return HTMLResponse(lookup_page(
-                query, None,
-                "Product search is temporarily unavailable — please try again.",
+                query, None, f'No products found for "{query}".',
                 platform))
-        if food is not None:
-            # Cache the USDA record + image URL (never misses or errors).
-            _lookup_cache.put(key, {"food": food, "image": image})
-    if food is None:
+        return HTMLResponse(render_verdict(query, food, platform))
+    if not visible:
         return HTMLResponse(lookup_page(
             query, None, f'No products found for "{query}".',
             platform))
-    brand = food.get("brandName") or food.get("brandOwner") or ""
-    verdict = verdict_for(
-        food.get("description") or "",
-        brand,
-        food.get("ingredients") or "",
-    )
-    return HTMLResponse(lookup_page(query, (verdict, image), None,
-                                    platform))
+    top = visible[0]
+    if is_exact_product_match(top, query):
+        return HTMLResponse(render_verdict(query, top, platform))
+    cleanest, rows = results_data(visible)
+    return HTMLResponse(results_page(query, cleanest, rows, platform))
+
+
+@app.get("/v", response_class=HTMLResponse)
+def verdict_detail(request: Request, fdc: int = Query(...),
+                   q: str = Query(default="")):
+    """Full verdict for one row of a results list (zero-JS link target)."""
+    limited = rate_limited(request, _lookup_limiter)
+    if limited is not None:
+        return limited
+    query = (q or "").strip()[:MAX_QUERY_LEN]
+    platform = detect_platform(request.headers.get("user-agent"))
+    if not USDA_API_KEY:
+        return HTMLResponse(lookup_page(
+            query or None, None,
+            "Product search isn't configured on this server yet.",
+            platform))
+    try:
+        foods, _ = get_foods(query) if query else ([], [])
+    except UsdaError:
+        return HTMLResponse(lookup_page(
+            query or None, None,
+            "Product search is temporarily unavailable — please try again.",
+            platform))
+    food = next((f for f in foods if f.get("fdcId") == fdc), None)
+    if food is None:
+        return HTMLResponse(lookup_page(
+            query or None, None,
+            "That product isn't in the search results anymore — "
+            "please search again.",
+            platform))
+    return HTMLResponse(render_verdict(query, food, platform))

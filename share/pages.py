@@ -4,6 +4,7 @@ Pure HTML builders; app.py supplies the data. No framework, no JS.
 """
 
 import html
+import urllib.parse
 
 SITE_CSS = """
 body{font-family:system-ui,-apple-system,sans-serif;margin:0;color:#111827;
@@ -60,6 +61,21 @@ text-align:center}
 .badge{display:inline-block;padding:8px 20px;border-radius:999px;
 font-weight:800;margin:14px 0 6px;color:#fff}
 .badge.clean{background:#166534}.badge.dirty{background:#991b1b}
+.badge.small{padding:4px 12px;font-size:12px}
+.badge.nodata{background:#f3f4f6;color:#6b7280}
+.pick-label{display:inline-block;font-size:12px;font-weight:700;
+letter-spacing:.08em;text-transform:uppercase;color:#166534;
+background:#dcfce7;border-radius:999px;padding:4px 12px;margin-bottom:8px}
+.rhead{margin:20px 0 8px;font-size:18px}
+.rows{display:flex;flex-direction:column;gap:8px}
+a.row{display:flex;align-items:center;gap:12px;background:#fff;
+border:1px solid #e5e7eb;border-radius:12px;padding:10px 12px;
+text-decoration:none;color:inherit}
+a.row:hover{border-color:#bbf7d0}
+.rbody{flex:1;min-width:0}
+.rname{font-weight:700;font-size:15px}
+.rcat{font-size:13px;color:#6b7280}
+.rscore{font-weight:800;white-space:nowrap;font-size:14px}
 .score{font-size:15px;color:#4b5563;margin:6px 0 4px}
 .score-note{font-size:13px;color:#6b7280;margin:0 0 10px;max-width:560px}
 .cat{color:#6b7280;font-size:14px}
@@ -260,6 +276,94 @@ def lookup_page(query, result, error, platform="desktop"):
         "it is.' />"
         "<meta property='og:type' content='website' />"
         "<meta property='og:url' content='https://barelabel.online/lookup' />"
+        "<meta name='twitter:card' content='summary' />"
+        "<style>" + SITE_CSS + "</style></head><body>"
+        "<div class='wrap'><nav class='top'>"
+        "<a class='brand' href='/'>BareLabel</a>"
+        "<span><a class='link' href='/lookup'>Try it</a> "
+        + app_cta(platform, "nav", "lookup") + "</span></nav>"
+        "<h2 style='margin-top:12px'>Product lookup</h2>"
+        "<p class='sub'>Search a product name or paste a barcode number.</p>"
+        "<form class='search' action='/lookup' method='get'>"
+        "<input name='q' value='" + q + "' "
+        "placeholder='e.g. cheez-it or 038000265013' autocomplete='off' />"
+        "<button type='submit'>Check</button></form>"
+        + body +
+        "</div>"
+        "<footer>BareLabel \u00b7 Ingredient data: "
+        "<a href='https://fdc.nal.usda.gov/' target='_blank' "
+        "rel='noopener'>USDA FoodData Central</a> &amp; "
+        "<a href='https://world.openfoodfacts.org/' target='_blank' "
+        "rel='noopener'>Open Food Facts</a></footer></body></html>"
+    )
+
+
+def results_page(query, cleanest, rows, platform="desktop"):
+    """Ranked result list for generic text searches.
+
+    cleanest is (food, verdict, image_url) or None; rows are
+    [(food, verdict_or_None)] in rank order, cleanest excluded.
+    Pure HTML builders; app.py supplies the data. No framework, no JS.
+    """
+    esc = lambda s: html.escape(s or "", quote=True)  # noqa: E731
+    q = esc(query)
+    qarg = urllib.parse.quote(query or "", safe="")
+
+    def badge(verdict):
+        if verdict is None:
+            return "<span class='badge small nodata'>No ingredient data</span>"
+        cls = "clean" if verdict["clean"] else "dirty"
+        word = "\u2713 CLEAN" if verdict["clean"] else "\u26a0 DIRTY"
+        return ("<span class='badge small " + cls + "'>" + word + "</span> "
+                "<span class='rscore'>" + str(verdict["score"])
+                + "/100</span>")
+
+    def vlink(food):
+        return "/v?fdc=" + str(food.get("fdcId")) + "&q=" + qarg
+
+    body = ""
+    if cleanest:
+        food, verdict, image = cleanest
+        img = ("<img class='product' src='" + esc(image) + "' alt='' />"
+               if image else "")
+        brand = ("<div class='cat'>" + esc(verdict["brand"]) + "</div>"
+                 if verdict["brand"] else "")
+        body += (
+            "<div class='card'><span class='pick-label'>Cleanest match</span>"
+            + img + "<h2>" + esc(verdict["name"]) + "</h2>" + brand
+            + "<p>" + badge(verdict) + "</p>"
+            + "<p><a class='btn btn-green' href='" + vlink(food)
+            + "'>See full verdict</a></p></div>"
+        )
+    items = ""
+    for food, verdict in rows:
+        brand = food.get("brandName") or food.get("brandOwner") or ""
+        brand_html = ("<div class='rcat'>" + esc(brand) + "</div>"
+                      if brand else "")
+        items += (
+            "<a class='row' href='" + vlink(food) + "'>"
+            "<span class='rbody'><span class='rname'>"
+            + esc(food.get("description") or "") + "</span>"
+            + brand_html + "</span>" + badge(verdict) + "</a>"
+        )
+    n = len(rows) + (1 if cleanest else 0)
+    body += ("<h3 class='rhead'>" + str(n) + " match"
+             + ("" if n == 1 else "es") + " for &ldquo;" + q
+             + "&rdquo;</h3><div class='rows'>" + items + "</div>")
+    body += ("<p class='note'>Verdicts use BareLabel's default avoid list "
+             "(everything it flags). The "
+             + {"android": "Android", "ios": "iOS"}.get(platform, "mobile")
+             + " app lets you customize yours.</p>"
+             + "<p>" + app_cta(platform, "card", "lookup") + "</p>")
+    title = "BareLabel results: " + q
+    return (
+        "<!doctype html><html lang='en'><head><meta charset='utf-8' />"
+        "<meta name='viewport' content='width=device-width, initial-scale=1' />"
+        "<title>" + title + "</title>"
+        "<meta name='description' content='Compare grocery products. "
+        "BareLabel ranks the matches and shows the cleanest pick.' />"
+        "<meta property='og:title' content='" + title + "' />"
+        "<meta property='og:type' content='website' />"
         "<meta name='twitter:card' content='summary' />"
         "<style>" + SITE_CSS + "</style></head><body>"
         "<div class='wrap'><nav class='top'>"

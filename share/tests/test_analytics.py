@@ -106,13 +106,13 @@ def test_landing_view_sends_ga_event():
 
 def test_search_and_click_send_ga_events():
     sent, orig = _capture()
-    orig_lookup = app_module.lookup_product
-    app_module.lookup_product = lambda q: (None, None)
+    orig_lookup = app_module.get_foods
+    app_module.get_foods = lambda q: ([], [])
     try:
         app_module.lookup(_req("ua", "5.6.7.8"), q="bread")
         app_module.go_play(_req("ua", "5.6.7.8"), src="lookup-card")
     finally:
-        app_module.lookup_product = orig_lookup
+        app_module.get_foods = orig_lookup
         _restore(orig)
     names = [p["events"][0]["name"] for p in sent]
     assert names == ["search", "app_click"]

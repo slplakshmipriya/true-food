@@ -53,14 +53,14 @@ def test_landing_view_counted_by_platform():
 
 def test_search_counted_text_vs_barcode():
     stats.reset()
-    orig = app_module.lookup_product
-    app_module.lookup_product = lambda q: (None, None)  # no results, no network
+    orig = app_module.get_foods
+    app_module.get_foods = lambda q: ([], [])  # no results, no network
     try:
         app_module.lookup(_req(), q="bread")
         app_module.lookup(_req(), q="038000265013")
         app_module.lookup(_req(), q="   ")  # blank: not a search
     finally:
-        app_module.lookup_product = orig
+        app_module.get_foods = orig
     snap = stats.snapshot()
     assert snap.get("search:text") == 1
     assert snap.get("search:barcode") == 1
