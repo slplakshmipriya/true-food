@@ -1634,13 +1634,14 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
                     }
                 }
             }
-            String phraseFixed = OcrCorrector.correctPhrases(ocrText, multiWordTerms);
-            String localCorrected = OcrCorrector.correct(phraseFixed, dictWords);
-            // Premium path: server-side BERT correction first (context-aware
-            // reranking the on-device corrector cannot do). Local corrector
-            // is the offline/error fallback.
+            // Server-side BERT correction refines first (context-aware
+            // reranking); the local corrector always runs after it, so a
+            // server pass that changes nothing never blocks local fixes.
+            // Server unreachable -> local pipeline alone.
             String serverCorrected = ServerSpellChecker.correct(ocrText);
-            String corrected = serverCorrected != null ? serverCorrected : localCorrected;
+            String base = serverCorrected != null ? serverCorrected : ocrText;
+            String phraseFixed = OcrCorrector.correctPhrases(base, multiWordTerms);
+            String corrected = OcrCorrector.correct(phraseFixed, dictWords);
             FlaggedIngredientManager.MatchResult matchResult =
                     FlaggedIngredientManager.analyzeIngredients(
                             MainActivity.this, corrected);
