@@ -198,8 +198,8 @@ public final class OcrCorrector {
         return bestCount == 1 ? best : null;
     }
 
-    /** Levenshtein distance, or -1 when it exceeds max (early exit). */
-    private static int levenshteinBounded(String a, String b, int max) {
+    /** Levenshtein distance, or -1 when it exceeds max (early exit). Package-visible for reuse. */
+    static int levenshteinBounded(String a, String b, int max) {
         int n = a.length();
         int m = b.length();
         int[] prev = new int[m + 1];

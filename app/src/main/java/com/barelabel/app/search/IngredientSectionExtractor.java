@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Android-free extraction of the ingredients section from OCR'd label text.
@@ -44,6 +46,8 @@ public final class IngredientSectionExtractor {
             "nutrition", "directions", "warning", "net wt", "net weight",
             "best before", "expiry", "customer care", "keep in", "shelf life",
     };
+
+    private static final Pattern WORD = Pattern.compile("[A-Za-z]+");
 
     private IngredientSectionExtractor() {
     }
@@ -90,11 +94,22 @@ public final class IngredientSectionExtractor {
         return out.isEmpty() ? joinAll(sorted) : out;
     }
 
-    /** First line starting with "ingred", else first line containing it. */
+    /**
+     * First line starting with "ingred"; else first line whose first word is
+     * within edit distance 2 of "ingredients" (OCR often drops or mangles a
+     * letter: "NGREDIENTS"); else first line containing "ingred".
+     */
     private static int findHeader(List<OcrLine> lines) {
         for (int i = 0; i < lines.size(); i++) {
             String t = lines.get(i).text.trim().toLowerCase(Locale.US);
             if (t.startsWith("ingred")) {
+                return i;
+            }
+        }
+        for (int i = 0; i < lines.size(); i++) {
+            String fw = firstWord(lines.get(i).text).toLowerCase(Locale.US);
+            if (!fw.isEmpty() && !fw.startsWith("ingred")
+                    && OcrCorrector.levenshteinBounded(fw, "ingredients", 2) >= 0) {
                 return i;
             }
         }
@@ -106,26 +121,36 @@ public final class IngredientSectionExtractor {
         return -1;
     }
 
+    private static String firstWord(String line) {
+        Matcher m = WORD.matcher(line);
+        return m.find() ? m.group() : "";
+    }
+
+    /** End offset (exclusive) of the header word in the line, or -1. */
+    private static int headerWordEnd(String line) {
+        Matcher m = WORD.matcher(line);
+        while (m.find()) {
+            String w = m.group().toLowerCase(Locale.US);
+            if (w.startsWith("ingred")) {
+                return m.end();
+            }
+            if (OcrCorrector.levenshteinBounded(w, "ingredients", 2) >= 0) {
+                return m.end();
+            }
+        }
+        return -1;
+    }
+
     /** Text after the header word on the header line itself, if any. */
     private static String afterHeader(String headerText) {
-        String lower = headerText.toLowerCase(Locale.US);
-        int h = lower.indexOf("ingred");
-        if (h < 0) {
+        int end = headerWordEnd(headerText);
+        if (end < 0) {
             return "";
         }
-        int colon = headerText.indexOf(':', h);
-        String rest;
-        if (colon >= 0) {
-            rest = headerText.substring(colon + 1);
-        } else {
-            int j = h + "ingred".length();
-            while (j < headerText.length()
-                    && Character.isLetter(headerText.charAt(j))) {
-                j++;
-            }
-            rest = headerText.substring(j);
+        String rest = headerText.substring(end).trim();
+        if (rest.startsWith(":")) {
+            rest = rest.substring(1).trim();
         }
-        rest = rest.trim();
         while (!rest.isEmpty() && "-–—•".indexOf(rest.charAt(0)) >= 0) {
             rest = rest.substring(1).trim();
         }

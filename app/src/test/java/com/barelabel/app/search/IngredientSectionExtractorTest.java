@@ -82,4 +82,23 @@ public class IngredientSectionExtractorTest {
         String out = IngredientSectionExtractor.extract(in);
         assertTrue(out.contains("oats"));
     }
+
+    @Test
+    public void fuzzyHeader_ngredientsMissingI() {
+        // Ribbon pakoda scan: OCR dropped the leading I ("NGREDIENTS:")
+        List<OcrLine> in = lines(
+                new Object[]{"TASTY BITES Bliss MILLET BUTTER", 0, 20},
+                new Object[]{"No Bloating, only Floating", 25, 45},
+                new Object[]{"NGREDIENTS: Rice flour, Kodo Mlet Flour,", 50, 70},
+                new Object[]{"Rossted Gram flour, Butor, Garlic.", 75, 95},
+                new Object[]{"NO WHEAT NO MAIDA", 100, 120},
+                new Object[]{"Nutrition Facts", 130, 150},
+                new Object[]{"MANUFACTURED & MARKETED BY", 160, 180});
+        String out = IngredientSectionExtractor.extract(in);
+        assertTrue(out.startsWith("Rice flour,"));
+        assertTrue(out.contains("NO WHEAT NO MAIDA"));
+        assertFalse(out.contains("Nutrition"));
+        assertFalse(out.contains("MANUFACTURED"));
+        assertFalse(out.contains("TASTY BITES"));
+    }
 }

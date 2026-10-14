@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class FlaggedIngredientManager {
@@ -262,6 +263,53 @@ public class FlaggedIngredientManager {
     }
 
     /**
+     * "no X", "no added X", "without X", "not contain X" immediately before
+     * the match. The cue must directly precede the term (one adjective
+     * allowed): this keeps "No preservatives, wheat flour" flagging wheat
+     * while "no wheat" does not.
+     */
+    private static final Pattern NEGATION_BEFORE = Pattern.compile(
+            "(?:^|[\\s,;:])(?:no|not|without)(?:\\s+[a-z]+)?\\s+$");
+
+    /**
+     * True when the term match at [start, end) in the lowercased text is
+     * negated: a negation cue immediately before it, or "free" immediately
+     * after it ("gluten free", "dairy-free"). "free" before the term is NOT
+     * a negation ("fat free milk" still contains milk). Package-visible for
+     * JVM tests.
+     */
+    static boolean isNegated(String lowerText, int start, int end) {
+        int i = end;
+        while (i < lowerText.length() && !Character.isLetter(lowerText.charAt(i))) {
+            i++;
+        }
+        int j = i;
+        while (j < lowerText.length() && Character.isLetter(lowerText.charAt(j))) {
+            j++;
+        }
+        if (j > i && "free".equals(lowerText.substring(i, j))) {
+            return true;
+        }
+        int from = Math.max(0, start - 40);
+        return NEGATION_BEFORE.matcher(lowerText.substring(from, start)).find();
+    }
+
+    /**
+     * True when the pattern matches somewhere that is not negated. A negated
+     * occurrence ("no wheat") is skipped, but a later plain occurrence still
+     * flags. Package-visible for JVM tests.
+     */
+    static boolean termMatches(String lowerText, Pattern pattern) {
+        Matcher m = pattern.matcher(lowerText);
+        while (m.find()) {
+            if (!isNegated(lowerText, m.start(), m.end())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Pure matching pass over the precompiled terms — no asset I/O, no
      * regex compilation, no preference reads. This is the hot path.
      */
@@ -279,7 +327,7 @@ public class FlaggedIngredientManager {
         String lowerCaseIngredients = rawIngredientsText.toLowerCase(Locale.US);
         for (CompiledTerm term : terms) {
             if (!enabledCategories.contains(term.category)) continue;
-            if (term.pattern.matcher(lowerCaseIngredients).find()) {
+            if (termMatches(lowerCaseIngredients, term.pattern)) {
                 List<String> matched = result.categoryMap.get(term.category);
                 if (matched == null) {
                     matched = new ArrayList<>();
