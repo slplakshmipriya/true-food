@@ -6,8 +6,12 @@ import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Size;
 import android.view.Gravity;
+import android.view.View;
+import android.view.ViewParent;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -21,11 +25,10 @@ import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.barelabel.app.ocr.OcrModelManager;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.mlkit.vision.common.InputImage;
-import com.google.mlkit.vision.text.TextRecognition;
 import com.google.mlkit.vision.text.TextRecognizer;
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -33,10 +36,13 @@ import java.util.concurrent.Executors;
 
 /**
  * CameraX ingredient-label scanner. The user frames the ingredients panel and
- * taps CAPTURE; the next frame is OCR'd with the bundled ML Kit text
+ * taps CAPTURE; the next frame is OCR'd with the Play Services ML Kit text
  * recognizer and the raw text is returned to MainActivity, which
  * spellchecks it (OcrCorrector) and runs the verdict — no confirmation
  * screen, by design.
+ *
+ * <p>The unbundled recognition model is prepared via {@link OcrModelManager}
+ * with a progress bar before the capture button enables.
  */
 public class IngredientScanActivity extends AppCompatActivity {
 
@@ -48,8 +54,12 @@ public class IngredientScanActivity extends AppCompatActivity {
     private PreviewView previewView;
     private ExecutorService cameraExecutor;
     private TextRecognizer recognizer;
+    private ProgressBar modelProgress;
+    private TextView modelStatus;
+    private Button captureButton;
     private volatile boolean captureRequested = false;
     private volatile boolean done = false;
+    private volatile boolean modelReady = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,25 +72,50 @@ public class IngredientScanActivity extends AppCompatActivity {
         root.addView(previewView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        Button captureButton = new Button(this);
+        // Model-preparation row: progress bar + status, hidden once ready.
+        LinearLayout prepRow = new LinearLayout(this);
+        prepRow.setOrientation(LinearLayout.HORIZONTAL);
+        prepRow.setGravity(Gravity.CENTER_VERTICAL);
+        int margin = (int) (16 * getResources().getDisplayMetrics().density);
+        LinearLayout.LayoutParams prepLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        prepLp.setMargins(margin, margin, margin, 0);
+        modelProgress = new ProgressBar(this, null,
+                android.R.attr.progressBarStyleHorizontal);
+        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        modelStatus = new TextView(this);
+        modelStatus.setText("Preparing scanner…");
+        modelStatus.setPadding(margin, 0, 0, 0);
+        prepRow.addView(modelProgress, barLp);
+        prepRow.addView(modelStatus);
+        root.addView(prepRow, prepLp);
+
+        captureButton = new Button(this);
         captureButton.setText("CAPTURE LABEL");
+        captureButton.setEnabled(false);
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         btnLp.gravity = Gravity.CENTER_HORIZONTAL;
-        int margin = (int) (16 * getResources().getDisplayMetrics().density);
         btnLp.setMargins(margin, margin, margin, margin);
         root.addView(captureButton, btnLp);
         captureButton.setOnClickListener(v -> {
-            if (!done) {
-                captureRequested = true;
-                Toast.makeText(this, "Reading label…", Toast.LENGTH_SHORT).show();
+            if (done) {
+                return;
             }
+            if (!modelReady) {
+                // Error state doubles as retry.
+                prepareModel();
+                return;
+            }
+            captureRequested = true;
+            Toast.makeText(this, "Reading label…", Toast.LENGTH_SHORT).show();
         });
 
         setContentView(root);
 
-        recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
         cameraExecutor = Executors.newSingleThreadExecutor();
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
@@ -89,6 +124,53 @@ public class IngredientScanActivity extends AppCompatActivity {
         } else {
             ActivityCompat.requestPermissions(
                     this, new String[]{Manifest.permission.CAMERA}, PERMISSION_CAMERA_REQUEST);
+        }
+        prepareModel();
+    }
+
+    /** Pre-downloads the OCR model with progress; enables capture when ready. */
+    private void prepareModel() {
+        modelReady = false;
+        captureButton.setEnabled(false);
+        captureButton.setText("CAPTURE LABEL");
+        prepRowVisible(true);
+        OcrModelManager.ensureReady(this, new OcrModelManager.Listener() {
+            @Override
+            public void onPreparing(long bytesDownloaded, long totalBytes) {
+                if (totalBytes > 0) {
+                    modelProgress.setIndeterminate(false);
+                    modelProgress.setMax(100);
+                    modelProgress.setProgress(
+                            (int) (100 * bytesDownloaded / totalBytes));
+                } else {
+                    modelProgress.setIndeterminate(true);
+                }
+                modelStatus.setText("Preparing scanner…");
+            }
+
+            @Override
+            public void onReady(TextRecognizer readyRecognizer) {
+                recognizer = readyRecognizer;
+                modelReady = true;
+                prepRowVisible(false);
+                captureButton.setEnabled(true);
+            }
+
+            @Override
+            public void onError() {
+                modelProgress.setIndeterminate(false);
+                modelProgress.setProgress(0);
+                modelStatus.setText("Couldn't prepare the scanner. Check your connection.");
+                captureButton.setText("RETRY");
+                captureButton.setEnabled(true);
+            }
+        });
+    }
+
+    private void prepRowVisible(boolean visible) {
+        ViewParent parent = modelProgress.getParent();
+        if (parent instanceof View) {
+            ((View) parent).setVisibility(visible ? View.VISIBLE : View.GONE);
         }
     }
 
@@ -128,11 +210,16 @@ public class IngredientScanActivity extends AppCompatActivity {
             return;
         }
         captureRequested = false;
+        final TextRecognizer activeRecognizer = recognizer;
+        if (activeRecognizer == null) {
+            imageProxy.close();
+            return;
+        }
 
         InputImage image = InputImage.fromMediaImage(
                 imageProxy.getImage(), imageProxy.getImageInfo().getRotationDegrees());
 
-        recognizer.process(image)
+        activeRecognizer.process(image)
                 .addOnSuccessListener(visionText -> {
                     String text = visionText.getText() == null
                             ? "" : visionText.getText().trim();

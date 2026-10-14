@@ -27,9 +27,7 @@ import java.util.Iterator;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import com.google.mlkit.vision.common.InputImage;
-import com.google.mlkit.vision.text.TextRecognition;
 import com.google.mlkit.vision.text.TextRecognizer;
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
@@ -61,7 +59,9 @@ import com.barelabel.app.model.ProductResult;
 import com.barelabel.app.model.ScannedProduct;
 import com.barelabel.app.network.UsdaApiClient;
 import com.barelabel.app.FlaggedIngredientManager;
+import com.barelabel.app.billing.PremiumGates;
 import com.barelabel.app.images.ProductImageResolver;
+import com.barelabel.app.ocr.OcrModelManager;
 import com.barelabel.app.search.BarcodeSeed;
 import com.barelabel.app.search.CleanAlternateFinder;
 import com.barelabel.app.search.DisambiguationDecider;
@@ -237,7 +237,13 @@ protected void onCreate(Bundle savedInstanceState) {
     }
     Button scanLabelButton = findViewById(R.id.scanLabelButton);
     if (scanLabelButton != null) {
-        scanLabelButton.setOnClickListener(v -> showLabelScanChooser());
+        scanLabelButton.setOnClickListener(v -> {
+            if (!PremiumGates.isOcrScanEnabled()) {
+                showOcrPaywall();
+                return;
+            }
+            showLabelScanChooser();
+        });
     }
 
     // Recent scans strip (Search tab): tap a card to re-run that search.
@@ -1499,6 +1505,15 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
         barcodeLauncher.launch(intent);
     }
 
+    /** Paywall placeholder for the OCR scanner (billing plumbing not built yet). */
+    private void showOcrPaywall() {
+        new AlertDialog.Builder(this)
+                .setTitle("Premium feature")
+                .setMessage("The ingredient label scanner is a BareLabel Premium feature.\n\nOne-time lifetime unlock coming soon.")
+                .setPositiveButton("Got it", null)
+                .show();
+    }
+
     /** Chooser for the ingredient-label scan: camera capture or gallery photo. */
     private void showLabelScanChooser() {
         new AlertDialog.Builder(this)
@@ -1518,11 +1533,35 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
     /** OCRs a gallery image with ML Kit, then runs the scanned-label pipeline. */
     private void ocrGalleryImage(Uri uri) {
         if (progress != null) progress.setVisibility(View.VISIBLE);
+        Toast.makeText(this, "Preparing scanner…", Toast.LENGTH_SHORT).show();
+        OcrModelManager.ensureReady(this, new OcrModelManager.Listener() {
+            @Override
+            public void onPreparing(long bytesDownloaded, long totalBytes) {
+                // Spinner already visible; nothing more to show here.
+            }
+
+            @Override
+            public void onReady(TextRecognizer recognizer) {
+                runGalleryOcr(uri, recognizer);
+            }
+
+            @Override
+            public void onError() {
+                runOnUiThread(() -> {
+                    if (progress != null) progress.setVisibility(View.GONE);
+                    Toast.makeText(MainActivity.this,
+                            "Couldn't prepare the scanner. Check your connection and try again.",
+                            Toast.LENGTH_LONG).show();
+                });
+            }
+        });
+    }
+
+    /** Runs ML Kit OCR on a gallery image; the model is already ensured. */
+    private void runGalleryOcr(Uri uri, TextRecognizer recognizer) {
         new Thread(() -> {
             try {
                 InputImage image = InputImage.fromFilePath(this, uri);
-                TextRecognizer recognizer =
-                        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
                 recognizer.process(image)
                         .addOnSuccessListener(visionText -> {
                             recognizer.close();
