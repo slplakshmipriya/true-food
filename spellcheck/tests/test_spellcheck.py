@@ -37,39 +37,42 @@ def test_valid_words_untouched():
 
 
 def test_bert_rerank_picks_candidate():
-    # "suger" is OOV; "sugar" is within edit distance 1 and BERT
-    # confirms it by context score.
-    fake = _fake_pipe_factory(
-        {
-            "[MASK]": [
-                {"token_str": "sugar", "score": 0.62},
-                {"token_str": "salt", "score": 0.11},
-            ]
-        }
-    )
-    with patch.object(spell_app, "get_pipeline", return_value=fake):
+    # "suger" has a unique best ("sugar" d=1): decisive, no BERT needed.
+    # The pipeline must not even be consulted.
+    called = []
+
+    def spy_pipe(*a, **k):
+        called.append(True)
+        return []
+
+    with patch.object(spell_app, "get_pipeline", return_value=spy_pipe):
         r = spell_app.correct_text("contains suger")
         assert r["corrected"] == "contains sugar"
+        assert not called, "BERT should not run for a unique best"
         assert len(r["corrections"]) == 1
         assert r["corrections"][0]["original"] == "suger"
         assert r["corrections"][0]["corrected"] == "sugar"
 
 
 def test_bert_tie_broken_by_context():
-    # "flou" is OOV with two candidates ("flour" d=1, "food" d=2).
-    # The local on-device corrector would punt on ambiguity; BERT's
-    # context score picks the winner.
-    fake = _fake_pipe_factory(
-        {
-            "[MASK]": [
-                {"token_str": "flour", "score": 0.55},
-                {"token_str": "food", "score": 0.12},
-            ]
-        }
-    )
-    with patch.object(spell_app, "get_pipeline", return_value=fake):
-        r = spell_app.correct_text("rice flou")
-        assert r["corrected"] == "rice flour"
+    # Constructed tie: "alph" is d=1 from both "alpha" and "alphi".
+    # Edit distance cannot decide; BERT's context score picks.
+    spell_app.VOCAB.update(["alpha", "alphi"])
+    try:
+        fake = _fake_pipe_factory(
+            {
+                "[MASK]": [
+                    {"token_str": "alpha", "score": 0.55},
+                    {"token_str": "alphi", "score": 0.12},
+                ]
+            }
+        )
+        with patch.object(spell_app, "get_pipeline", return_value=fake):
+            r = spell_app.correct_text("contains alph")
+            assert r["corrected"] == "contains alpha"
+    finally:
+        spell_app.VOCAB.discard("alpha")
+        spell_app.VOCAB.discard("alphi")
 
 
 def test_low_score_keeps_original():

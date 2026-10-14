@@ -2,11 +2,11 @@
 
 POST /spellcheck  {text} -> {corrected, corrections[]}
 
-Context-aware spelling correction for OCR'd ingredient text, using a
-BERT masked-language model to rerank edit-distance candidates. This is
-what the on-device dictionary corrector cannot do: pick the right word
-from context when several candidates are plausible ("sulfite" ->
-"sulfites" vs "sulfate").
+Context-aware spelling correction for OCR'd ingredient text. For each
+out-of-vocabulary word, edit-distance candidates (<= 2) are generated
+from the vocabulary: a unique best is applied directly, and true ties
+are reranked by a BERT masked-LM (context the on-device dictionary
+corrector cannot see).
 
 v1 scope: corrects out-of-vocabulary words only. A word already in the
 vocabulary is never touched (so valid-word confusions like pack/pork
@@ -119,13 +119,14 @@ def _edit_distance(a: str, b: str, max_dist: int) -> int:
 
 
 def _candidates(word: str) -> list:
-    """Vocabulary words within edit distance 2 of the misspelled word."""
+    """(vocabulary word, edit distance) pairs within MAX_EDIT_DISTANCE."""
     out = []
     for v in VOCAB:
         if abs(len(v) - len(word)) > MAX_EDIT_DISTANCE:
             continue
-        if _edit_distance(word, v, MAX_EDIT_DISTANCE) <= MAX_EDIT_DISTANCE:
-            out.append(v)
+        d = _edit_distance(word, v, MAX_EDIT_DISTANCE)
+        if d <= MAX_EDIT_DISTANCE:
+            out.append((v, d))
     return out
 
 
@@ -148,16 +149,35 @@ def correct_text(text: str) -> dict:
     if not todo:
         return {"corrected": text, "corrections": []}
 
-    pipe = get_pipeline()
     corrections = []
     # work on a mutable list of current words
     cur = list(words)
+    pipe = None  # BERT pipeline, loaded lazily only if a tie needs it
 
     for i in todo:
         original = cur[i]
-        cands = set(_candidates(lower[i]))
+        cands = _candidates(lower[i])
         if not cands:
             continue
+        min_d = min(d for _, d in cands)
+        tied = [v for v, d in cands if d == min_d]
+        if len(tied) == 1:
+            # Unique best by edit distance: decisive, no BERT needed.
+            best_word = tied[0]
+            corrections.append(
+                {
+                    "original": original,
+                    "corrected": best_word,
+                    "confidence": round(1.0 / (1 + min_d), 4),
+                }
+            )
+            cur[i] = best_word
+            lower[i] = best_word
+            continue
+        # True tie: BERT reranks the tied candidates by context.
+        if pipe is None:
+            pipe = get_pipeline()
+        tied_set = set(tied)
         masked_words = cur[:i] + ["[MASK]"] + cur[i + 1 :]
         masked_text = " ".join(masked_words)
         try:
@@ -170,7 +190,7 @@ def correct_text(text: str) -> dict:
             # single-word, alphabetic predictions only
             if not token_str or not token_str.isalpha():
                 continue
-            if token_str in cands and p["score"] > best_score:
+            if token_str in tied_set and p["score"] > best_score:
                 best_word, best_score = token_str, float(p["score"])
         if best_word and best_score >= MIN_SCORE and best_word != lower[i]:
             corrections.append(
