@@ -83,6 +83,11 @@ dependencies {
     implementation 'com.google.firebase:firebase-analytics'
 // ML Kit Barcode Scanning (Free & On-Device)
     implementation 'com.google.mlkit:barcode-scanning:17.3.0'
+// ML Kit Text Recognition, unbundled: model downloads via Play Services on
+// first use instead of shipping in the APK (~11MB/arm64 saved). Same API.
+    implementation 'com.google.android.gms:play-services-mlkit-text-recognition:19.0.1'
+// Play Services module installer: pre-downloads the OCR model with progress.
+    implementation 'com.google.android.gms:play-services-base:18.5.0'
 // Glide: product image loading (Open Food Facts URLs)
     implementation 'com.github.bumptech.glide:glide:4.16.0'
 
