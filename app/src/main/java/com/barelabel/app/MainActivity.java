@@ -238,7 +238,7 @@ protected void onCreate(Bundle savedInstanceState) {
     Button scanLabelButton = findViewById(R.id.scanLabelButton);
     if (scanLabelButton != null) {
         scanLabelButton.setOnClickListener(v -> {
-            if (!PremiumGates.isOcrScanEnabled()) {
+            if (!PremiumGates.isOcrScanEnabled(this)) {
                 showOcrPaywall();
                 return;
             }
@@ -1505,12 +1505,17 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
         barcodeLauncher.launch(intent);
     }
 
-    /** Paywall placeholder for the OCR scanner (billing plumbing not built yet). */
+    /** Paywall for the OCR scanner. "Get Premium" simulates the purchase for now. */
     private void showOcrPaywall() {
         new AlertDialog.Builder(this)
                 .setTitle("Premium feature")
-                .setMessage("The ingredient label scanner is a BareLabel Premium feature.\n\nOne-time lifetime unlock coming soon.")
-                .setPositiveButton("Got it", null)
+                .setMessage("The ingredient label scanner is a BareLabel Premium feature.\n\nOne-time lifetime unlock.")
+                .setPositiveButton("Get Premium", (dialog, which) -> {
+                    PremiumGates.setOcrScanUnlocked(this, true);
+                    Toast.makeText(this, "Premium unlocked", Toast.LENGTH_SHORT).show();
+                    showLabelScanChooser();
+                })
+                .setNegativeButton("Not now", null)
                 .show();
     }
 
