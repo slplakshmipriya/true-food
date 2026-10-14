@@ -106,6 +106,15 @@ def test_punctuation_preserved():
         assert r["corrected"] == "sugar, salt!"
 
 
+def test_short_words_skipped():
+    # "AM" must never become "ham": short fragments belong to phrases,
+    # which the on-device phrase corrector handles with more context.
+    with patch.object(spell_app, "get_pipeline", return_value=lambda *a, **k: []):
+        r = spell_app.correct_text("AM purpose Fou")
+        assert r["corrected"] == "AM purpose Fou"
+        assert r["corrections"] == []
+
+
 def test_endpoint_shape():
     fake = _fake_pipe_factory({"[MASK]": [{"token_str": "salt", "score": 0.9}]})
     with patch.object(spell_app, "get_pipeline", return_value=fake):

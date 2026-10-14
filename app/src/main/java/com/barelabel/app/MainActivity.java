@@ -1634,14 +1634,16 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
                     }
                 }
             }
-            // Server-side BERT correction refines first (context-aware
-            // reranking); the local corrector always runs after it, so a
-            // server pass that changes nothing never blocks local fixes.
-            // Server unreachable -> local pipeline alone.
-            String serverCorrected = ServerSpellChecker.correct(ocrText);
-            String base = serverCorrected != null ? serverCorrected : ocrText;
-            String phraseFixed = OcrCorrector.correctPhrases(base, multiWordTerms);
-            String corrected = OcrCorrector.correct(phraseFixed, dictWords);
+            // 1. Phrase-level first (most context): fixes multi-word terms
+            //    like "AM purpose Fou" -> "all purpose flour" before any
+            //    word-level step can fragment them ("AM" -> "ham").
+            String phraseFixed = OcrCorrector.correctPhrases(ocrText, multiWordTerms);
+            // 2. Server-side BERT refinement for remaining OOV words.
+            // 3. Local token-level finish (also the offline fallback when
+            //    the server is unreachable).
+            String serverCorrected = ServerSpellChecker.correct(phraseFixed);
+            String base = serverCorrected != null ? serverCorrected : phraseFixed;
+            String corrected = OcrCorrector.correct(base, dictWords);
             FlaggedIngredientManager.MatchResult matchResult =
                     FlaggedIngredientManager.analyzeIngredients(
                             MainActivity.this, corrected);

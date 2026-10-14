@@ -144,8 +144,10 @@ def correct_text(text: str) -> dict:
     words = [w for w, _, _ in spans]
     lower = [w.lower() for w in words]
 
-    # indices of words worth correcting
-    todo = [i for i, w in enumerate(lower) if w not in VOCAB]
+    # indices of words worth correcting (skip short words: they are
+    # usually fragments like "AM" that belong to phrases, and the
+    # on-device phrase corrector handles those with more context)
+    todo = [i for i, w in enumerate(lower) if w not in VOCAB and len(w) >= 3]
     if not todo:
         return {"corrected": text, "corrections": []}
 
