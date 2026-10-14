@@ -62,6 +62,7 @@ import com.barelabel.app.FlaggedIngredientManager;
 import com.barelabel.app.billing.PremiumGates;
 import com.barelabel.app.images.ProductImageResolver;
 import com.barelabel.app.ocr.OcrModelManager;
+import com.barelabel.app.ocr.ServerSpellChecker;
 import com.barelabel.app.search.BarcodeSeed;
 import com.barelabel.app.search.CleanAlternateFinder;
 import com.barelabel.app.search.DisambiguationDecider;
@@ -1634,7 +1635,12 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
                 }
             }
             String phraseFixed = OcrCorrector.correctPhrases(ocrText, multiWordTerms);
-            String corrected = OcrCorrector.correct(phraseFixed, dictWords);
+            String localCorrected = OcrCorrector.correct(phraseFixed, dictWords);
+            // Premium path: server-side BERT correction first (context-aware
+            // reranking the on-device corrector cannot do). Local corrector
+            // is the offline/error fallback.
+            String serverCorrected = ServerSpellChecker.correct(ocrText);
+            String corrected = serverCorrected != null ? serverCorrected : localCorrected;
             FlaggedIngredientManager.MatchResult matchResult =
                     FlaggedIngredientManager.analyzeIngredients(
                             MainActivity.this, corrected);
