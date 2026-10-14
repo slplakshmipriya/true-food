@@ -834,7 +834,9 @@
             android:layout_height="wrap_content"
             android:background="#FFFFFF"
             android:elevation="8dp"
-            app:menu="@menu/bottom_nav_menu" />
+            app:menu="@menu/bottom_nav_menu"
+            app:itemIconTint="@color/bottom_nav_item_tint"
+            app:itemTextColor="@color/bottom_nav_item_tint" />
     </LinearLayout>
 
     <!-- Sticky results header: appears once the alternates card scrolls into view.
