@@ -31,6 +31,21 @@ MIN_SCORE = float(os.environ.get("SPELLCHECK_MIN_SCORE", "0.05"))
 MAX_EDIT_DISTANCE = 2
 TOP_K = 20
 
+# Common function words that are never valid correction targets
+# ("Fou" -> "for" is edit-close but always wrong).
+STOPWORDS = {
+    "for", "the", "and", "are", "was", "were", "been", "has", "have",
+    "had", "will", "would", "could", "should", "may", "might", "must",
+    "shall", "with", "from", "that", "this", "these", "those", "then",
+    "than", "them", "they", "their", "there", "here", "where", "when",
+    "what", "which", "while", "who", "whom", "whose", "how", "all",
+    "any", "both", "each", "few", "more", "most", "other", "some",
+    "such", "only", "own", "same", "too", "very", "can", "just",
+    "into", "over", "after", "before", "between", "through", "during",
+    "about", "above", "below", "off", "out", "up", "down", "of", "to",
+    "in", "on", "at", "by", "or", "as", "is", "it", "an", "a",
+}
+
 WORD_RE = re.compile(r"[A-Za-z]+")
 
 
@@ -39,11 +54,53 @@ class SpellRequest(BaseModel):
 
 
 # --------------------------------------------------------------------------
-# Vocabulary: flagged-ingredient words + common food words. A word in here
-# is never "corrected". Loaded once at import.
+# Vocabulary: 50k+ food-ingredient words (Open Food Facts ingredients +
+# additives taxonomies, all latin-script languages, accent-folded; plus
+# flagged-ingredient terms and an Indian packaged-foods supplement).
+# A word in here is never "corrected". Loaded once at import, bucketed
+# by length so candidate search only scans lengths within +/-2.
 # --------------------------------------------------------------------------
 
-def _load_vocabulary() -> set:
+def _load_word_set(path: str) -> set:
+    words = set()
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                w = line.strip().lower()
+                if w:
+                    words.add(w)
+    return words
+
+
+def _load_vocabulary() -> dict:
+    """Length-bucketed full vocabulary (50k+). Words in here are never
+    'corrected'."""
+    buckets: dict = {}
+    here = os.path.dirname(__file__)
+    for w in _load_word_set(os.path.join(here, "vocabulary.txt")):
+        buckets.setdefault(len(w), []).append(w)
+    if not buckets:  # fallback (keeps tests working without the file)
+        for w in _fallback_vocab():
+            buckets.setdefault(len(w), []).append(w)
+    return buckets
+
+
+def _load_candidates() -> dict:
+    """Length-bucketed candidate vocabulary: clean English subset used
+    for generating correction candidates (avoids tie noise from the
+    full multi-language set)."""
+    buckets: dict = {}
+    here = os.path.dirname(__file__)
+    words = _load_word_set(os.path.join(here, "candidate_vocabulary.txt"))
+    if not words:
+        # fall back to the full vocab buckets
+        return VOCAB_BUCKETS
+    for w in words:
+        buckets.setdefault(len(w), []).append(w)
+    return buckets
+
+
+def _fallback_vocab() -> set:
     vocab = set()
     here = os.path.dirname(__file__)
     flagged_path = os.path.join(here, "flagged_ingredients.json")
@@ -56,7 +113,6 @@ def _load_vocabulary() -> set:
             for term in cat.get("ingredients", []):
                 for w in re.findall(r"[a-z]+", term.lower()):
                     vocab.add(w)
-    # Common food / label words, so valid words aren't sent to BERT.
     vocab.update(
         """
         flour sugar salt water milk butter ghee oil yogurt curd cheese cream
@@ -73,7 +129,9 @@ def _load_vocabulary() -> set:
     return vocab
 
 
-VOCAB = _load_vocabulary()
+VOCAB_BUCKETS = _load_vocabulary()
+VOCAB = {w for bucket in VOCAB_BUCKETS.values() for w in bucket}
+CANDIDATE_BUCKETS = _load_candidates()
 
 # --------------------------------------------------------------------------
 # Model (lazy, thread-safe)
@@ -119,14 +177,18 @@ def _edit_distance(a: str, b: str, max_dist: int) -> int:
 
 
 def _candidates(word: str) -> list:
-    """(vocabulary word, edit distance) pairs within MAX_EDIT_DISTANCE."""
+    """(candidate word, edit distance) pairs within MAX_EDIT_DISTANCE.
+
+    Candidates come from the clean English subset (avoids tie noise);
+    only length buckets within +/-2 are scanned.
+    """
     out = []
-    for v in VOCAB:
-        if abs(len(v) - len(word)) > MAX_EDIT_DISTANCE:
-            continue
-        d = _edit_distance(word, v, MAX_EDIT_DISTANCE)
-        if d <= MAX_EDIT_DISTANCE:
-            out.append((v, d))
+    n = len(word)
+    for length in range(n - MAX_EDIT_DISTANCE, n + MAX_EDIT_DISTANCE + 1):
+        for v in CANDIDATE_BUCKETS.get(length, ()):
+            d = _edit_distance(word, v, MAX_EDIT_DISTANCE)
+            if d <= MAX_EDIT_DISTANCE:
+                out.append((v, d))
     return out
 
 
@@ -158,25 +220,29 @@ def correct_text(text: str) -> dict:
 
     for i in todo:
         original = cur[i]
-        cands = _candidates(lower[i])
+        cands = [(v, d) for v, d in _candidates(lower[i]) if v not in STOPWORDS]
         if not cands:
             continue
         min_d = min(d for _, d in cands)
+        if min_d > 1:
+            # d=2+ with a 50k vocab is too noisy for a decisive fix
+            # ("mithai" -> "thai"); leave it alone.
+            continue
         tied = [v for v, d in cands if d == min_d]
         if len(tied) == 1:
-            # Unique best by edit distance: decisive, no BERT needed.
+            # Unique best at d=1: decisive, no BERT needed.
             best_word = tied[0]
             corrections.append(
                 {
                     "original": original,
                     "corrected": best_word,
-                    "confidence": round(1.0 / (1 + min_d), 4),
+                    "confidence": 0.5,
                 }
             )
             cur[i] = best_word
             lower[i] = best_word
             continue
-        # True tie: BERT reranks the tied candidates by context.
+        # True tie at d=1: BERT reranks the tied candidates by context.
         if pipe is None:
             pipe = get_pipeline()
         tied_set = set(tied)

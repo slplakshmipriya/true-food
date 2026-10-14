@@ -37,8 +37,8 @@ def test_valid_words_untouched():
 
 
 def test_bert_rerank_picks_candidate():
-    # "suger" has a unique best ("sugar" d=1): decisive, no BERT needed.
-    # The pipeline must not even be consulted.
+    # "sugr" has a unique best ("sugar" d=1) in the candidate subset:
+    # decisive, no BERT needed. The pipeline must not even be consulted.
     called = []
 
     def spy_pipe(*a, **k):
@@ -46,11 +46,11 @@ def test_bert_rerank_picks_candidate():
         return []
 
     with patch.object(spell_app, "get_pipeline", return_value=spy_pipe):
-        r = spell_app.correct_text("contains suger")
+        r = spell_app.correct_text("contains sugr")
         assert r["corrected"] == "contains sugar"
         assert not called, "BERT should not run for a unique best"
         assert len(r["corrections"]) == 1
-        assert r["corrections"][0]["original"] == "suger"
+        assert r["corrections"][0]["original"] == "sugr"
         assert r["corrections"][0]["corrected"] == "sugar"
 
 

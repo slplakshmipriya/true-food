@@ -11,6 +11,6 @@ ARG SPELLCHECK_MODEL=distilbert-base-uncased
 ENV SPELLCHECK_MODEL=${SPELLCHECK_MODEL}
 RUN python -c "from transformers import pipeline; pipeline('fill-mask', model='$SPELLCHECK_MODEL', top_k=5)"
 
-COPY app.py flagged_ingredients.json ./
+COPY app.py flagged_ingredients.json vocabulary.txt candidate_vocabulary.txt ./
 EXPOSE 8080
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
