@@ -73,4 +73,50 @@ public class OcrCorrectorTest {
                 OcrCorrector.correct("suger", new HashSet<String>()));
         assertEquals("suger", OcrCorrector.correct("suger", null));
     }
+
+    // ---- correctPhrases: ingredient-level edit distance ----
+
+    private static final Set<String> PHRASE_TERMS = dict(
+            "all purpose flour", "wheat flour", "high fructose corn syrup",
+            "palm oil", "corn oil", "cod oil");
+
+    @Test
+    public void phraseFixesMultiTokenMangle() {
+        assertEquals("all purpose flour, yogurt",
+                OcrCorrector.correctPhrases(
+                        "AM purpose Fou, yogurt", PHRASE_TERMS));
+    }
+
+    @Test
+    public void phraseFixesEachTokenOnce() {
+        assertEquals("wheat flour and water",
+                OcrCorrector.correctPhrases("whet flor and water", PHRASE_TERMS));
+    }
+
+    @Test
+    public void phraseLeavesTiesAlone() {
+        // "con oil" is 1 edit from both "corn oil" and "cod oil": ambiguous.
+        assertEquals("con oil",
+                OcrCorrector.correctPhrases("con oil", PHRASE_TERMS));
+    }
+
+    @Test
+    public void phraseKeepsExactMatchVerbatim() {
+        assertEquals("All Purpose Flour",
+                OcrCorrector.correctPhrases("All Purpose Flour", PHRASE_TERMS));
+    }
+
+    @Test
+    public void phrasePreservesPunctuation() {
+        assertEquals("all purpose flour, yogurt!",
+                OcrCorrector.correctPhrases("AM purpose Fou, yogurt!", PHRASE_TERMS));
+    }
+
+    @Test
+    public void phraseEmptyInputs() {
+        assertEquals("", OcrCorrector.correctPhrases("", PHRASE_TERMS));
+        assertEquals("", OcrCorrector.correctPhrases(null, PHRASE_TERMS));
+        assertEquals("flour",
+                OcrCorrector.correctPhrases("flour", new HashSet<String>()));
+    }
 }

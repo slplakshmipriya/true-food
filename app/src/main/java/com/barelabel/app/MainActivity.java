@@ -1619,15 +1619,22 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
         }
         new Thread(() -> {
             Set<String> dictWords = new HashSet<>();
+            Set<String> multiWordTerms = new HashSet<>();
             for (String term : FlaggedIngredientManager.getFlaggedTerms(
                     MainActivity.this)) {
-                for (String w : term.toLowerCase(Locale.US).split("[^a-z]+")) {
+                String norm = term.toLowerCase(Locale.US).trim()
+                        .replaceAll("\\s+", " ");
+                if (norm.contains(" ")) {
+                    multiWordTerms.add(norm);
+                }
+                for (String w : norm.split("[^a-z]+")) {
                     if (!w.isEmpty()) {
                         dictWords.add(w);
                     }
                 }
             }
-            String corrected = OcrCorrector.correct(ocrText, dictWords);
+            String phraseFixed = OcrCorrector.correctPhrases(ocrText, multiWordTerms);
+            String corrected = OcrCorrector.correct(phraseFixed, dictWords);
             FlaggedIngredientManager.MatchResult matchResult =
                     FlaggedIngredientManager.analyzeIngredients(
                             MainActivity.this, corrected);

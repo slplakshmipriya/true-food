@@ -1,6 +1,8 @@
 package com.barelabel.app.search;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -67,6 +69,103 @@ public final class OcrCorrector {
             m.appendReplacement(out, Matcher.quoteReplacement(replacement));
         }
         m.appendTail(out);
+        return out.toString();
+    }
+
+    /**
+     * Phrase-level correction for multi-word flagged terms ("all purpose
+     * flour", "high fructose corn syrup"). Token-level correction cannot fix
+     * phrases where several tokens are mangled at once ("AM purpose Fou":
+     * "AM" is too short to touch, "Fou" is 2 edits from "flour").
+     *
+     * <p>For each window of words, the unique best term within a
+     * length-scaled threshold (max(2, term length / 4), roughly 25%
+     * normalized edit distance) replaces the whole span with the canonical
+     * term. Same conservatism as {@link #correct}: tied matches are left
+     * alone, exact matches are preserved verbatim (casing included), and
+     * punctuation outside the word spans is untouched.
+     */
+    public static String correctPhrases(String text, Set<String> multiWordTerms) {
+        if (text == null || text.isEmpty()
+                || multiWordTerms == null || multiWordTerms.isEmpty()) {
+            return text == null ? "" : text;
+        }
+        List<String> terms = new ArrayList<>();
+        List<Integer> termWords = new ArrayList<>();
+        for (String t : multiWordTerms) {
+            if (t == null) {
+                continue;
+            }
+            String norm = t.trim().toLowerCase(Locale.US).replaceAll("\\s+", " ");
+            if (norm.contains(" ")) {
+                terms.add(norm);
+                termWords.add(norm.split(" ").length);
+            }
+        }
+        if (terms.isEmpty()) {
+            return text;
+        }
+        Matcher m = WORD.matcher(text);
+        List<String> words = new ArrayList<>();
+        List<int[]> spans = new ArrayList<>();
+        while (m.find()) {
+            words.add(m.group().toLowerCase(Locale.US));
+            spans.add(new int[]{m.start(), m.end()});
+        }
+        int n = words.size();
+        if (n == 0) {
+            return text;
+        }
+        StringBuilder out = new StringBuilder(text.length());
+        int pos = 0;
+        int i = 0;
+        while (i < n) {
+            String bestTerm = null;
+            int bestK = 0;
+            int bestDist = Integer.MAX_VALUE;
+            int bestCount = 0;
+            for (int ti = 0; ti < terms.size(); ti++) {
+                String term = terms.get(ti);
+                int k = termWords.get(ti);
+                if (i + k > n) {
+                    continue;
+                }
+                StringBuilder cand = new StringBuilder();
+                for (int j = 0; j < k; j++) {
+                    if (j > 0) {
+                        cand.append(' ');
+                    }
+                    cand.append(words.get(i + j));
+                }
+                int threshold = Math.max(2, term.length() / 4);
+                if (Math.abs(cand.length() - term.length()) > threshold) {
+                    continue;
+                }
+                int d = levenshteinBounded(cand.toString(), term, threshold);
+                if (d <= 0) {
+                    continue; // exact match or over threshold
+                }
+                if (d < bestDist) {
+                    bestDist = d;
+                    bestTerm = term;
+                    bestK = k;
+                    bestCount = 1;
+                } else if (d == bestDist) {
+                    bestCount++;
+                }
+            }
+            if (bestTerm != null && bestCount == 1) {
+                int start = spans.get(i)[0];
+                int end = spans.get(i + bestK - 1)[1];
+                out.append(text, pos, start);
+                out.append(bestTerm);
+                pos = end;
+                i += bestK;
+            } else {
+                i++;
+            }
+        }
+        out.append(text, pos, text.length());
         return out.toString();
     }
 
