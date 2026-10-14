@@ -26,6 +26,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.barelabel.app.ocr.OcrModelManager;
+import com.barelabel.app.search.IngredientSectionExtractor;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.text.TextRecognizer;
@@ -221,8 +222,9 @@ public class IngredientScanActivity extends AppCompatActivity {
 
         activeRecognizer.process(image)
                 .addOnSuccessListener(visionText -> {
-                    String text = visionText.getText() == null
-                            ? "" : visionText.getText().trim();
+                    String section = IngredientSectionExtractor.extract(
+                            OcrModelManager.toOcrLines(visionText));
+                    String text = section.trim();
                     if (!done && text.replaceAll("\\s+", "").length() >= MIN_TEXT_LENGTH) {
                         done = true;
                         Intent intent = new Intent();

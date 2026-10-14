@@ -65,6 +65,7 @@ import com.barelabel.app.ocr.OcrModelManager;
 import com.barelabel.app.search.BarcodeSeed;
 import com.barelabel.app.search.CleanAlternateFinder;
 import com.barelabel.app.search.DisambiguationDecider;
+import com.barelabel.app.search.IngredientSectionExtractor;
 import com.barelabel.app.search.OcrCorrector;
 import com.barelabel.app.ui.AlternatesCardController;
 import com.barelabel.app.ui.CompareViewBuilder;
@@ -1570,8 +1571,8 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
                 recognizer.process(image)
                         .addOnSuccessListener(visionText -> {
                             recognizer.close();
-                            String text = visionText.getText() == null
-                                    ? "" : visionText.getText().trim();
+                            String text = IngredientSectionExtractor.extract(
+                                    OcrModelManager.toOcrLines(visionText)).trim();
                             if (text.replaceAll("\\s+", "").length() >= 15) {
                                 onIngredientTextScanned(text);
                             } else {

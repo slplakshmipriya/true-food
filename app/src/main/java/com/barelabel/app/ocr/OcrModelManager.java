@@ -2,14 +2,21 @@ package com.barelabel.app.ocr;
 
 import android.content.Context;
 
+import com.barelabel.app.search.IngredientSectionExtractor;
 import com.google.android.gms.common.moduleinstall.InstallStatusListener;
 import com.google.android.gms.common.moduleinstall.ModuleInstall;
 import com.google.android.gms.common.moduleinstall.ModuleInstallClient;
 import com.google.android.gms.common.moduleinstall.ModuleInstallRequest;
 import com.google.android.gms.common.moduleinstall.ModuleInstallStatusUpdate;
+import com.google.mlkit.vision.text.Text;
 import com.google.mlkit.vision.text.TextRecognition;
 import com.google.mlkit.vision.text.TextRecognizer;
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
+
+import android.graphics.Rect;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Ensures the Play Services ML Kit text-recognition model is on-device before
@@ -39,6 +46,27 @@ public final class OcrModelManager {
     }
 
     private OcrModelManager() {
+    }
+
+    /**
+     * Converts ML Kit vision text into sortable OCR lines for
+     * {@link IngredientSectionExtractor}.
+     */
+    public static List<IngredientSectionExtractor.OcrLine> toOcrLines(Text visionText) {
+        List<IngredientSectionExtractor.OcrLine> out = new ArrayList<>();
+        if (visionText == null) {
+            return out;
+        }
+        for (Text.TextBlock block : visionText.getTextBlocks()) {
+            for (Text.Line line : block.getLines()) {
+                Rect box = line.getBoundingBox();
+                int top = box != null ? box.top : 0;
+                int bottom = box != null ? box.bottom : 0;
+                out.add(new IngredientSectionExtractor.OcrLine(
+                        line.getText(), top, bottom));
+            }
+        }
+        return out;
     }
 
     /** Creates the recognizer and ensures its model, then calls the listener. */
