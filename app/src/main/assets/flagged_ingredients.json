@@ -36,6 +36,7 @@
       "wheat flour",
       "whole wheat",
       "enriched wheat flour",
+      "all purpose flour",
       "wheat gluten",
       "barley",
       "barley malt",
@@ -233,7 +234,8 @@
       "disodium inosinate",
       "disodium guanylate",
       "hydrolyzed vegetable protein",
-      "natural flavor"
+      "natural flavor",
+      "vanillin"
     ]
   },
   "Fats & Hydrogenated Oils": {

@@ -21,6 +21,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -147,6 +148,27 @@ public class UsdaApiClient {
      * returns ProductResult.notFound() when USDA has nothing usable.
      */
     public ProductResult searchPrimary(String productName) throws Exception {
+        return searchWithCandidates(productName).primary;
+    }
+
+    /** searchWithCandidates output: the top pick plus the ranked field. */
+    public static class SearchOutcome {
+        /** The single-pick result (same as searchPrimary). Never null. */
+        public final ProductResult primary;
+        /** Ranked, brand-spam-filtered USDA candidates (may be empty). */
+        public final List<JSONObject> candidates;
+
+        SearchOutcome(ProductResult primary, List<JSONObject> candidates) {
+            this.primary = primary;
+            this.candidates = candidates;
+        }
+    }
+
+    /**
+     * Primary search that also returns the ranked candidates, so callers can
+     * offer disambiguation without a second fetch. Never null.
+     */
+    public SearchOutcome searchWithCandidates(String productName) throws Exception {
         // v4: larger page + spam filtering (see UsdaSpamFilter); old cached
         // v3 responses are unfiltered, so they must not be reused.
         String cacheKey = "usda_search4_" + productName.toLowerCase().trim();
@@ -173,13 +195,15 @@ public class UsdaApiClient {
         }
 
         if (TextUtils.isEmpty(body)) {
-            return ProductResult.notFound();
+            return new SearchOutcome(ProductResult.notFound(),
+                new ArrayList<JSONObject>());
         }
 
         JSONObject root = new JSONObject(body);
         JSONArray foods = root.optJSONArray("foods");
         if (foods == null || foods.length() == 0) {
-            return ProductResult.notFound();
+            return new SearchOutcome(ProductResult.notFound(),
+                new ArrayList<JSONObject>());
         }
 
         // Rank: whole-word matches first, brand-spam last. Skip spam when
@@ -188,13 +212,29 @@ public class UsdaApiClient {
         List<JSONObject> ranked = UsdaSpamFilter.rankedCandidates(foods, productName);
         JSONObject chosen = selectTopPick(foods, ranked);
         if (chosen == null) {
-            return ProductResult.notFound();
+            return new SearchOutcome(ProductResult.notFound(),
+                new ArrayList<JSONObject>());
         }
 
         ProductResult result = buildProductResult(chosen, productName);
         // Consensus category for generic queries (see majorityFoodCategory).
         result.queryCategory = majorityFoodCategory(ranked);
-        return result;
+        List<JSONObject> candidates = new ArrayList<>();
+        for (JSONObject f : ranked) {
+            if (!UsdaSpamFilter.isSpamBrand(f.optString("brandOwner", ""))) {
+                candidates.add(f);
+            }
+        }
+        return new SearchOutcome(result, candidates);
+    }
+
+    /**
+     * Builds a fully analyzed ProductResult for one USDA food record
+     * (ingredients run through FlaggedIngredientManager). Used for
+     * disambiguation options.
+     */
+    public ProductResult productResultFor(JSONObject food) {
+        return buildProductResult(food, "");
     }
 
     /**

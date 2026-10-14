@@ -39,6 +39,7 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -58,6 +59,7 @@ import com.barelabel.app.FlaggedIngredientManager;
 import com.barelabel.app.images.ProductImageResolver;
 import com.barelabel.app.search.BarcodeSeed;
 import com.barelabel.app.search.CleanAlternateFinder;
+import com.barelabel.app.search.DisambiguationDecider;
 import com.barelabel.app.ui.AlternatesCardController;
 import com.barelabel.app.ui.CompareViewBuilder;
 import com.barelabel.app.ui.ProductDetailDialog;
@@ -82,6 +84,10 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar progress;
     private TextView statusText, verdictText, flaggedText, ingredientsText;
     private LinearLayout resultCard;
+    private LinearLayout disambiguationCard, disambiguationList;
+    private TextView disambiguationSubtitle;
+    /** Set by lookupBarcodeAndSearch; barcode scans skip disambiguation. */
+    private boolean pendingBarcodeSearch;
     private com.barelabel.app.ui.CleanScoreView cleanScoreView;
     private LinearLayout flaggedList;
     private androidx.recyclerview.widget.RecyclerView recentsRecycler;
@@ -440,6 +446,9 @@ private void refreshRecents() {
         flaggedText = findViewById(R.id.flaggedText);
         ingredientsText = findViewById(R.id.ingredientsText);
         resultCard = findViewById(R.id.resultCard);
+        disambiguationCard = findViewById(R.id.disambiguationCard);
+        disambiguationList = findViewById(R.id.disambiguationList);
+        disambiguationSubtitle = findViewById(R.id.disambiguationSubtitle);
         cleanScoreView = findViewById(R.id.cleanScoreView);
         flaggedList = findViewById(R.id.flaggedList);
         recentsRecycler = findViewById(R.id.recentsRecycler);
@@ -494,6 +503,10 @@ private void refreshRecents() {
 
     private void search() {
         clearComparePicks();
+        // Barcode-initiated searches name an exact product; they always go
+        // straight to the verdict, never to disambiguation.
+        final boolean fromBarcode = pendingBarcodeSearch;
+        pendingBarcodeSearch = false;
         // Suggestions are no longer needed once the user commits to a search.
         if (autoCompleteManager != null) {
             autoCompleteManager.dismissSuggestions();
@@ -530,6 +543,7 @@ private void refreshRecents() {
         progress.setVisibility(ProgressBar.VISIBLE);
         searchButton.setEnabled(false);
         resultCard.setVisibility(LinearLayout.GONE);
+        if (disambiguationCard != null) disambiguationCard.setVisibility(View.GONE);
         alternatesController.resetToggle();
         statusText.setText("Searching USDA FoodData Central…");
         statusText.setVisibility(View.VISIBLE);
@@ -544,9 +558,17 @@ private void refreshRecents() {
                 //    fdcId, so fetch that exact record instead of re-running a
                 //    fuzzy text search on the display label.
                 final boolean fetchedById = fdcId > 0;
-                ProductResult primaryResult = fetchedById
-                        ? usdaApiClient.fetchFoodById(fdcId)
-                        : usdaApiClient.searchPrimary(product);
+                final ProductResult primaryResult;
+                final List<JSONObject> candidates;
+                if (fetchedById) {
+                    primaryResult = usdaApiClient.fetchFoodById(fdcId);
+                    candidates = Collections.emptyList();
+                } else {
+                    UsdaApiClient.SearchOutcome outcome =
+                            usdaApiClient.searchWithCandidates(product);
+                    primaryResult = outcome.primary;
+                    candidates = outcome.candidates;
+                }
                 runOnUiThread(() -> {
                     if (generation == searchGeneration) {
                         statusText.setText("Checking ingredients…");
@@ -556,6 +578,35 @@ private void refreshRecents() {
                 // 2. Unbranded search intent: when the query does not name the product's
                 //    brand, treat it as a category search and always show clean choices.
                 boolean categoryIntent = isCategorySearch(product, primaryResult);
+
+                // 2b. Disambiguation for branded text searches: when the best
+                // title match is strong but inexact, offer the top choices
+                // instead of auto-picking one verdict. Tapped suggestions
+                // (fdcId) and barcode scans already name an exact product.
+                final List<ProductResult> disambiguationOptions;
+                if (!fetchedById && !fromBarcode && !categoryIntent
+                        && primaryResult.found) {
+                    List<JSONObject> options = DisambiguationDecider.disambiguate(
+                            product, candidates);
+                    if (!options.isEmpty()) {
+                        disambiguationOptions = new ArrayList<>();
+                        for (JSONObject o : options) {
+                            disambiguationOptions.add(
+                                    usdaApiClient.productResultFor(o));
+                        }
+                    } else {
+                        disambiguationOptions = null;
+                    }
+                } else {
+                    disambiguationOptions = null;
+                }
+                if (disambiguationOptions != null) {
+                    runOnUiThread(() -> {
+                        if (generation != searchGeneration) return; // superseded
+                        showDisambiguation(disambiguationOptions, product);
+                    });
+                    return;
+                }
 
                 // 3. Category: for a category search the category should represent the
                 //    query, not the single top hit — one record can be miscategorized by
@@ -665,11 +716,125 @@ private void refreshRecents() {
     }
 
 
+    /**
+     * Shows the disambiguation list for a branded text search whose best
+     * title match was strong but inexact (see DisambiguationDecider).
+     * Tapping a row searches that exact product name, which scores 100 and
+     * renders its verdict directly through the normal flow.
+     */
+    private void showDisambiguation(List<ProductResult> options, String query) {
+        if (statusText != null) statusText.setVisibility(View.GONE);
+        setSkeletonVisible(false);
+        if (resultCard != null) resultCard.setVisibility(View.GONE);
+        alternatesController.hide();
+        if (ingredientsCard != null) ingredientsCard.setVisibility(View.GONE);
+        disambiguationList.removeAllViews();
+        disambiguationSubtitle.setText(
+                "Top " + options.size() + " matches for \u201C" + query.trim() + "\u201D");
+        for (ProductResult opt : options) {
+            disambiguationList.addView(buildDisambiguationRow(opt));
+        }
+        disambiguationCard.setVisibility(View.VISIBLE);
+    }
+
+    private View buildDisambiguationRow(final ProductResult opt) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        int pad = dp(12);
+        row.setPadding(pad, pad, pad, pad);
+        row.setBackgroundResource(R.drawable.bg_card);
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        rowLp.bottomMargin = dp(8);
+        row.setLayoutParams(rowLp);
+        row.setClickable(true);
+        row.setFocusable(true);
+
+        LinearLayout textCol = new LinearLayout(this);
+        textCol.setOrientation(LinearLayout.VERTICAL);
+        textCol.setLayoutParams(new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView name = new TextView(this);
+        name.setText(StringNormalizer.toTitleCase(
+                opt.name == null ? "" : opt.name));
+        name.setTextColor(Color.parseColor("#111827"));
+        name.setTextSize(15f);
+        name.setTypeface(null, Typeface.BOLD);
+        name.setMaxLines(2);
+        name.setEllipsize(TextUtils.TruncateAt.END);
+        textCol.addView(name);
+
+        String brand = opt.brand == null ? "" : opt.brand.trim();
+        if (!brand.isEmpty()) {
+            TextView brandView = new TextView(this);
+            brandView.setText(StringNormalizer.toTitleCase(brand));
+            brandView.setTextColor(Color.parseColor("#6B7280"));
+            brandView.setTextSize(12f);
+            brandView.setMaxLines(1);
+            brandView.setEllipsize(TextUtils.TruncateAt.END);
+            textCol.addView(brandView);
+        }
+        row.addView(textCol);
+
+        boolean isClean = opt.flagged == null || opt.flagged.isEmpty();
+        int flaggedCount = opt.flagged == null ? 0 : opt.flagged.size();
+        int categoryCount = (opt.matchResult != null
+                && opt.matchResult.categoryMap != null)
+                ? opt.matchResult.categoryMap.size() : 0;
+        int score = CleanScoreCalculator.score(true, flaggedCount, categoryCount);
+
+        LinearLayout metaCol = new LinearLayout(this);
+        metaCol.setOrientation(LinearLayout.VERTICAL);
+        metaCol.setGravity(Gravity.END);
+        LinearLayout.LayoutParams metaLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        metaLp.leftMargin = dp(12);
+        metaCol.setLayoutParams(metaLp);
+
+        TextView pill = new TextView(this);
+        pill.setText(isClean ? "\u2713 CLEAN" : "\u26A0 DIRTY");
+        pill.setTextColor(isClean ? C_GREEN_800 : C_RED_800);
+        pill.setBackgroundResource(isClean
+                ? R.drawable.chip_clean_background
+                : R.drawable.chip_dirty_background);
+        pill.setTextSize(11f);
+        pill.setTypeface(null, Typeface.BOLD);
+        int pillH = dp(3), pillW = dp(8);
+        pill.setPadding(pillW, pillH, pillW, pillH);
+        metaCol.addView(pill);
+
+        TextView scoreView = new TextView(this);
+        scoreView.setText(score + "/100");
+        scoreView.setTextColor(Color.parseColor("#374151"));
+        scoreView.setTextSize(13f);
+        scoreView.setTypeface(null, Typeface.BOLD);
+        scoreView.setGravity(Gravity.END);
+        LinearLayout.LayoutParams scoreLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        scoreLp.topMargin = dp(4);
+        scoreView.setLayoutParams(scoreLp);
+        metaCol.addView(scoreView);
+        row.addView(metaCol);
+
+        row.setOnClickListener(v -> {
+            disambiguationCard.setVisibility(View.GONE);
+            searchBox.setText(opt.name);
+            search();
+        });
+        return row;
+    }
+
     private void showResult(ProductResult result, String foodType, boolean categoryIntent,
                             Set<String> flaggedCategories, Map<String, Integer> reliefCounts,
                             boolean fetchedById) {
         currentPrimaryResult = result;
         clearComparePicks();
+        if (disambiguationCard != null) disambiguationCard.setVisibility(View.GONE);
         if (statusText != null) statusText.setVisibility(View.GONE);
         setSkeletonVisible(false);
     // Unbranded category search (e.g. "cookies"): the top hit is just one random
@@ -1365,6 +1530,7 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
             runOnUiThread(() -> {
                 if (progress != null) progress.setVisibility(View.GONE);
                 searchBox.setText(finalProductName);
+                pendingBarcodeSearch = true;
                 search();
             });
         }).start();
@@ -1397,6 +1563,8 @@ private void setupCategoryFilterPanel() {
         CheckBox checkBox = new CheckBox(this);
         checkBox.setText(category);
         checkBox.setTextSize(12f);
+        // The filter panel is light; the theme default text color is not.
+        checkBox.setTextColor(Color.parseColor("#111827"));
 
         // Check preference manager (or SharedPreferences) for sticky state
         boolean isEnabled = CategoryPreferenceManager.isCategoryEnabled(this, category);
