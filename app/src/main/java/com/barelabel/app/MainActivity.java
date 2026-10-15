@@ -101,7 +101,7 @@ public class MainActivity extends AppCompatActivity {
     /** Set by lookupBarcodeAndSearch; barcode scans skip disambiguation. */
     private boolean pendingBarcodeSearch;
     private com.barelabel.app.ui.CleanScoreView cleanScoreView;
-    private LinearLayout flaggedList;
+    private com.google.android.flexbox.FlexboxLayout flaggedList;
     private androidx.recyclerview.widget.RecyclerView recentsRecycler;
     private TextView recentsLabel;
     private com.barelabel.app.ui.RecentsAdapter recentsAdapter;
@@ -1021,13 +1021,13 @@ private void refreshRecents() {
     boolean isClean = result.flagged == null || result.flagged.isEmpty();
 
     // Clean Score next to the binary verdict (degrees for comparisons).
+    int flaggedCount = result.flagged == null ? 0 : result.flagged.size();
+    int categoryCount = (result.matchResult != null
+            && result.matchResult.categoryMap != null)
+            ? result.matchResult.categoryMap.size() : 0;
+    int cleanScore = CleanScoreCalculator.score(true, flaggedCount, categoryCount);
     if (cleanScoreView != null) {
-        int flaggedCount = result.flagged == null ? 0 : result.flagged.size();
-        int categoryCount = (result.matchResult != null
-                && result.matchResult.categoryMap != null)
-                ? result.matchResult.categoryMap.size() : 0;
-        cleanScoreView.setScore(CleanScoreCalculator.score(
-                true, flaggedCount, categoryCount));
+        cleanScoreView.setScore(cleanScore);
     }
 
     // Persist this scan to history (deduplicated, newest-first), unless the
@@ -1091,7 +1091,7 @@ private void refreshRecents() {
         // (free users; premium gets the LLM explanation instead).
         bindFlaggedList(result, !premium);
     }
-    bindVerdictExplanation(result, isClean, premium);
+    bindVerdictExplanation(result, isClean, cleanScore, premium);
 
     // 3. Verdict chips: per-category pass/fail so the verdict shows its work.
     bindVerdictChips(result);
@@ -1207,23 +1207,46 @@ private void bindFlaggedList(ProductResult result, boolean expandable) {
     for (Map.Entry<String, List<String>> entry : result.matchResult.categoryMap.entrySet()) {
         String category = entry.getKey();
         for (String ingredient : entry.getValue()) {
-            flaggedList.addView(buildFlaggedRow(ingredient, category, expandable));
+            flaggedList.addView(expandable
+                    ? buildFlaggedRow(ingredient, category)
+                    : buildFlaggedChip(ingredient));
             any = true;
         }
     }
     flaggedList.setVisibility(any ? View.VISIBLE : View.GONE);
 }
 
-/** A flagged-ingredient row; expandable shows the rule-based reason on tap. */
-private View buildFlaggedRow(final String ingredient, final String category,
-                             boolean expandable) {
+/**
+ * Compact wrap-content chip for premium users: text width plus padding so
+ * several fit per row. No expansion; the in-card LLM explanation covers
+ * the "why".
+ */
+private View buildFlaggedChip(String ingredient) {
+    TextView chip = new TextView(this);
+    chip.setText("⚠ " + ingredient);
+    chip.setTextSize(13f);
+    chip.setTypeface(chip.getTypeface(), Typeface.BOLD);
+    chip.setTextColor(C_RED_900);
+    chip.setBackgroundResource(R.drawable.bg_search_box);
+    chip.setPadding(dp(12), dp(6), dp(12), dp(6));
+    FlexboxLayout.LayoutParams lp = new FlexboxLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT);
+    lp.setMargins(0, dp(4), dp(8), dp(4));
+    chip.setLayoutParams(lp);
+    return chip;
+}
+
+/** A single tappable flagged-ingredient row with a collapsible reason. */
+private View buildFlaggedRow(final String ingredient, final String category) {
     LinearLayout row = new LinearLayout(this);
     row.setOrientation(LinearLayout.VERTICAL);
     row.setPadding(dp(12), dp(8), dp(12), dp(8));
     row.setBackgroundResource(R.drawable.bg_search_box);
-    LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+    FlexboxLayout.LayoutParams rowParams = new FlexboxLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
     rowParams.topMargin = dp(6);
+    rowParams.setFlexBasisPercent(1.0f);
     row.setLayoutParams(rowParams);
     row.setClickable(true);
     row.setFocusable(true);
@@ -1245,9 +1268,7 @@ private View buildFlaggedRow(final String ingredient, final String category,
     chevron.setText("›");
     chevron.setTextSize(18f);
     chevron.setTextColor(C_GRAY_600);
-    if (expandable) {
-        header.addView(chevron);
-    }
+    header.addView(chevron);
     row.addView(header);
 
     final TextView reason = new TextView(this);
@@ -1257,20 +1278,13 @@ private View buildFlaggedRow(final String ingredient, final String category,
     reason.setTextColor(C_GRAY_600);
     reason.setPadding(0, dp(4), 0, 0);
     reason.setVisibility(View.GONE);
-    if (expandable) {
-        row.addView(reason);
-    }
+    row.addView(reason);
 
-    if (expandable) {
-        row.setOnClickListener(v -> {
-            boolean expand = reason.getVisibility() != View.VISIBLE;
-            reason.setVisibility(expand ? View.VISIBLE : View.GONE);
-            chevron.setText(expand ? "⌄" : "›");
-        });
-    } else {
-        row.setClickable(false);
-        row.setFocusable(false);
-    }
+    row.setOnClickListener(v -> {
+        boolean expand = reason.getVisibility() != View.VISIBLE;
+        reason.setVisibility(expand ? View.VISIBLE : View.GONE);
+        chevron.setText(expand ? "⌄" : "›");
+    });
     return row;
 }
 
@@ -1280,7 +1294,7 @@ private View buildFlaggedRow(final String ingredient, final String category,
  * this view. Fetched async; a stale result (user moved on) is dropped.
  */
 private void bindVerdictExplanation(ProductResult result, boolean isClean,
-                                    boolean premium) {
+                                    int cleanScore, boolean premium) {
     if (explanationText == null) {
         return;
     }
@@ -1292,6 +1306,7 @@ private void bindVerdictExplanation(ProductResult result, boolean isClean,
     explanationText.setText("Explaining…");
     final ProductResult forResult = result;
     final boolean clean = isClean;
+    final int score = cleanScore;
     new Thread(() -> {
         List<VerdictExplainer.Flag> flags = new ArrayList<>();
         String ingredients = "";
@@ -1313,7 +1328,7 @@ private void bindVerdictExplanation(ProductResult result, boolean isClean,
                 }
             }
         }
-        String explanation = VerdictExplainer.explain(clean, flags,
+        String explanation = VerdictExplainer.explain(clean, score, flags,
                 ingredients, enabledFilterNames(),
                 superiorIn(ingredients), allergen);
         runOnUiThread(() -> {

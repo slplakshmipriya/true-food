@@ -30,25 +30,28 @@ public final class VerdictExplainer {
      * Returns the explanation, or null on any failure. All list arguments
      * tolerate null/empty.
      */
-    public static String explain(boolean isClean, List<Flag> flagged,
-                                 String ingredients, List<String> filters,
+    public static String explain(boolean isClean, int cleanScore,
+                                 List<Flag> flagged, String ingredients,
+                                 List<String> filters,
                                  List<String> superiorIngredients,
                                  String allergenAdvice) {
-        String payload = buildPayload(isClean, flagged, ingredients, filters,
-                superiorIngredients, allergenAdvice);
+        String payload = buildPayload(isClean, cleanScore, flagged,
+                ingredients, filters, superiorIngredients, allergenAdvice);
         String out = GroqClient.chat(
                 LlmPrompts.EXPLAIN_SYSTEM, payload, 0.3, 150);
         return (out == null || out.trim().isEmpty()) ? null : out.trim();
     }
 
     /** Builds the JSON user message. Package-visible for JVM tests. */
-    static String buildPayload(boolean isClean, List<Flag> flagged,
-                               String ingredients, List<String> filters,
+    static String buildPayload(boolean isClean, int cleanScore,
+                               List<Flag> flagged, String ingredients,
+                               List<String> filters,
                                List<String> superiorIngredients,
                                String allergenAdvice) {
         StringBuilder sb = new StringBuilder(512);
         sb.append("{\"verdict\":\"").append(isClean ? "CLEAN" : "DIRTY")
-                .append("\",\"flagged\":[");
+                .append("\",\"clean_score\":").append(cleanScore)
+                .append(",\"flagged\":[");
         if (flagged != null) {
             boolean first = true;
             for (Flag f : flagged) {

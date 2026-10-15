@@ -372,7 +372,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
+                android:textColor="#374151"
                 android:textSize="14sp"
+                android:textStyle="italic"
                 android:visibility="gone" />
 
             <com.google.android.flexbox.FlexboxLayout
@@ -402,12 +404,14 @@
                 android:textSize="14sp"
                 android:visibility="gone" />
 
-            <!-- Expandable per-ingredient rows (tap for why it matters) -->
-            <LinearLayout
+            <!-- Compact flagged-ingredient chips (premium) or full-width
+                 expandable rows (free); LLM explanation replaces reasons -->
+            <com.google.android.flexbox.FlexboxLayout
                 android:id="@+id/flaggedList"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
+                app:flexWrap="wrap"
+                app:alignItems="flex_start"
                 android:visibility="gone" />
 
             <Button

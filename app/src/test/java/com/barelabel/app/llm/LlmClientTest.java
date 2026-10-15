@@ -37,7 +37,7 @@ public class LlmClientTest {
 
     @Test
     public void buildPayloadHasExpectedShape() {
-        String payload = VerdictExplainer.buildPayload(false,
+        String payload = VerdictExplainer.buildPayload(false, 79,
                 Arrays.asList(new VerdictExplainer.Flag("all purpose flour",
                         "Gluten")),
                 "all purpose flour, yogurt",
@@ -45,6 +45,7 @@ public class LlmClientTest {
                 Collections.emptyList(),
                 "processed near wheat");
         assertTrue(payload.contains("\"verdict\":\"DIRTY\""));
+        assertTrue(payload.contains("\"clean_score\":79"));
         assertTrue(payload.contains(
                 "\"ingredient\":\"all purpose flour\",\"category\":\"Gluten\""));
         assertTrue(payload.contains("\"filters\":[\"gluten\",\"dairy\"]"));
@@ -54,7 +55,7 @@ public class LlmClientTest {
 
     @Test
     public void buildPayloadToleratesNulls() {
-        String payload = VerdictExplainer.buildPayload(true, null, null,
+        String payload = VerdictExplainer.buildPayload(true, 95, null, null,
                 null, null, null);
         assertTrue(payload.contains("\"verdict\":\"CLEAN\""));
         assertTrue(payload.contains("\"flagged\":[]"));
