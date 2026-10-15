@@ -24,6 +24,10 @@ android {
         // Inject USDA_API_KEY into BuildConfig
         buildConfigField "String", "USDA_API_KEY",
                 "\"${localProperties.getProperty('USDA_API_KEY', '')}\""
+        // Inject GROQ_API_KEY into BuildConfig (LLM verdict explanations +
+        // contextual spellcheck; empty means LLM features stay disabled)
+        buildConfigField "String", "GROQ_API_KEY",
+                "\"${localProperties.getProperty('GROQ_API_KEY', '')}\""
     }
 
     buildFeatures {

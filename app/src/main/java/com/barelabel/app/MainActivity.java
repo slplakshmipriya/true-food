@@ -64,6 +64,7 @@ import com.barelabel.app.images.ProductImageResolver;
 import com.barelabel.app.ocr.OcrModelManager;
 import com.barelabel.app.ocr.OcrPreprocessor;
 import com.barelabel.app.ocr.ServerSpellChecker;
+import com.barelabel.app.llm.LlmSpellChecker;
 import com.barelabel.app.search.BarcodeSeed;
 import com.barelabel.app.search.CleanAlternateFinder;
 import com.barelabel.app.search.DisambiguationDecider;
@@ -1636,6 +1637,15 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
     private static final boolean USE_SERVER_SPELLCHECK = true;
 
     /**
+     * LLM contextual spellcheck toggle (2026-10-15): final step of the
+     * OCR -&gt; rudimentary spellcheck -&gt; LLM spellcheck pipeline.
+     * Validated against device OCR output with qwen/qwen3.8-27b on the Groq
+     * free tier. Off by default until the GROQ_API_KEY is configured and
+     * the premium gating decision is made.
+     */
+    private static final boolean USE_LLM_SPELLCHECK = false;
+
+    /**
      * Scan -> verdict pipeline for OCR'd ingredient text (camera or gallery).
      * No confirmation screen: OcrCorrector fixes OCR misspellings against the
      * flagged-ingredient dictionary before the verdict runs.
@@ -1675,6 +1685,14 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
                     ? ServerSpellChecker.correct(phraseFixed) : null;
             String base = serverCorrected != null ? serverCorrected : phraseFixed;
             String corrected = OcrCorrector.correct(base, dictWords);
+            // 4. LLM contextual polish for residual misspellings
+            //    (experimental; needs GROQ_API_KEY + premium decision).
+            if (USE_LLM_SPELLCHECK) {
+                String llmFixed = LlmSpellChecker.correct(corrected);
+                if (llmFixed != null && !llmFixed.isEmpty()) {
+                    corrected = llmFixed;
+                }
+            }
             FlaggedIngredientManager.MatchResult matchResult =
                     FlaggedIngredientManager.analyzeIngredients(
                             MainActivity.this, corrected);
