@@ -34,10 +34,15 @@ import java.nio.ByteBuffer;
  */
 public final class OcrPreprocessor {
 
-    /** Upscale factor applied before OCR. */
-    private static final float UPSCALE = 2.0f;
+    /**
+     * Upscale factor applied before OCR. Tuning knob: higher values give
+     * ML Kit more pixels on small label text (thin strokes like "ll"
+     * merging into "M") at the cost of slower recognition and more memory.
+     * 3x was chosen 2026-10-14 after 2x left single-char misreads.
+     */
+    private static final float UPSCALE = 3.0f;
     /** Cap on the longest side after upscaling (avoids OOM on huge photos). */
-    private static final int MAX_SIDE = 2560;
+    private static final int MAX_SIDE = 3072;
     /** Contrast multiplier for the enhancement pass. */
     private static final float CONTRAST = 1.6f;
 

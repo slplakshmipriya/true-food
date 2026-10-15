@@ -28,7 +28,18 @@ public final class ProductDetailDialog {
 
     private static final int C_GREEN_700 = android.graphics.Color.parseColor("#15803D");
 
+    /** Night-mode variants: the dialog sits on a dark background, so the
+     * day-mode dark reds/greens are unreadable (reported 2026-10-14). */
+    private static final int C_RED_300 = android.graphics.Color.parseColor("#FCA5A5");
+    private static final int C_GREEN_300 = android.graphics.Color.parseColor("#86EFAC");
+
     private ProductDetailDialog() {
+    }
+
+    private static boolean isNight(Context context) {
+        int night = context.getResources().getConfiguration().uiMode
+                & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
+        return night == android.content.res.Configuration.UI_MODE_NIGHT_YES;
     }
 
     public static void show(Context context, String title, String ingredients,
@@ -37,6 +48,7 @@ public final class ProductDetailDialog {
 
         // Verdict summary line
         boolean isClean = flagged == null || flagged.isEmpty();
+        boolean night = isNight(context);
         int verdictStart = content.length();
         if (isClean) {
             content.append("✓ Clean — no flagged categories\n\n");
@@ -47,7 +59,9 @@ public final class ProductDetailDialog {
         }
         content.setSpan(new StyleSpan(Typeface.BOLD),
                 verdictStart, content.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        content.setSpan(new ForegroundColorSpan(isClean ? C_GREEN_800 : C_RED_800),
+        content.setSpan(new ForegroundColorSpan(
+                        isClean ? (night ? C_GREEN_300 : C_GREEN_800)
+                                : (night ? C_RED_300 : C_RED_800)),
                 verdictStart, content.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 
         // Ingredients header
@@ -66,7 +80,8 @@ public final class ProductDetailDialog {
             content.append(trimmed);
             int tokenEnd = content.length();
             if (FlaggedIngredientManager.isSuperiorIngredient(context, trimmed)) {
-                content.setSpan(new ForegroundColorSpan(C_GREEN_700),
+                content.setSpan(new ForegroundColorSpan(
+                                night ? C_GREEN_300 : C_GREEN_700),
                         tokenStart, tokenEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 content.setSpan(new StyleSpan(Typeface.BOLD),
                         tokenStart, tokenEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);

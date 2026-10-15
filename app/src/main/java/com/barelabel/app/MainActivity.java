@@ -1622,13 +1622,14 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
     }
 
     /**
-     * Experiment (2026-10-14): skip the server BERT spellcheck to test
-     * whether the local fixes (input upscaling in OcrPreprocessor +
-     * OCR confusion matrix in OcrCorrector) already remedy "AM purpose
-     * Fou"-class errors on their own. ServerSpellChecker is intact; flip
-     * this back to true to re-enable the server refinement step.
+     * Server BERT spellcheck toggle. Experiment 2026-10-14: with the flag
+     * off, the local fixes (input upscaling + OCR confusion matrix) fully
+     * remedied the "AM purpose Fou" phrase-fragmentation class, but
+     * word-level typos on non-flagged words ("Sugr", "fecilty", "esame")
+     * still needed the server's 50k vocabulary. Re-enabled: local handles
+     * phrases, server handles the long tail of word typos.
      */
-    private static final boolean USE_SERVER_SPELLCHECK = false;
+    private static final boolean USE_SERVER_SPELLCHECK = true;
 
     /**
      * Scan -> verdict pipeline for OCR'd ingredient text (camera or gallery).
