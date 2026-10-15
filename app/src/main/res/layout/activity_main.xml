@@ -372,6 +372,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
+                android:drawableStart="@drawable/ic_ai_sparkle"
+                android:drawablePadding="8dp"
                 android:textColor="#374151"
                 android:textSize="14sp"
                 android:textStyle="italic"
