@@ -987,9 +987,12 @@ private void refreshRecents() {
                 });
     }
 
-    String userQuery = searchBox.getText().toString().trim().toLowerCase(Locale.US);
-    boolean isExactMatch = !TextUtils.isEmpty(userQuery) &&
-            result.name.toLowerCase(Locale.US).contains(userQuery);
+    String userQuery = normalizeForMatch(searchBox.getText().toString());
+    String resultName = normalizeForMatch(result.name);
+    // Match either way: the query may carry extras (brand in parens,
+    // recent-scan title) the USDA name lacks, or be a shorter substring.
+    boolean isExactMatch = !userQuery.isEmpty() &&
+            (resultName.contains(userQuery) || userQuery.contains(resultName));
 
     if (matchNoticeText != null) {
         if (!isExactMatch) {
@@ -1381,6 +1384,22 @@ private String extractAllergenAdvice(String ingredients) {
             .compile("(?i)allergen advice[^.]*\\.?")
             .matcher(ingredients);
     return m.find() ? m.group().trim() : "";
+}
+
+/**
+ * Normalizes a product name for match comparison: lowercase, drops
+ * parenthetical suffixes (brand extras, truncated "(BACI…"), strips
+ * punctuation, collapses whitespace. Used to decide whether the USDA
+ * result is what the user asked for.
+ */
+private String normalizeForMatch(String s) {
+    if (s == null) {
+        return "";
+    }
+    String out = s.toLowerCase(Locale.US);
+    out = out.replaceAll("\\(.*", " "); // drop "(" and everything after
+    out = out.replaceAll("[^a-z0-9 ]", " ");
+    return out.replaceAll("\\s+", " ").trim();
 }
 
 /**
