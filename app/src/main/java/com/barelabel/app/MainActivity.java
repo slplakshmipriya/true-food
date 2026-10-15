@@ -62,6 +62,8 @@ import com.barelabel.app.FlaggedIngredientManager;
 import com.barelabel.app.billing.PremiumGates;
 import com.barelabel.app.images.ProductImageResolver;
 import com.barelabel.app.ocr.OcrModelManager;
+import com.barelabel.app.ocr.OcrPreprocessor;
+import com.barelabel.app.ocr.ServerSpellChecker;
 import com.barelabel.app.search.BarcodeSeed;
 import com.barelabel.app.search.CleanAlternateFinder;
 import com.barelabel.app.search.DisambiguationDecider;
@@ -1566,8 +1568,20 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
     /** Runs ML Kit OCR on a gallery image; the model is already ensured. */
     private void runGalleryOcr(Uri uri, TextRecognizer recognizer) {
         new Thread(() -> {
+            android.graphics.Bitmap enhanced =
+                    OcrPreprocessor.fromGalleryUri(getContentResolver(), uri);
+            if (enhanced == null) {
+                recognizer.close();
+                runOnUiThread(() -> {
+                    if (progress != null) progress.setVisibility(View.GONE);
+                    Toast.makeText(MainActivity.this,
+                            "Couldn't open that photo.",
+                            Toast.LENGTH_SHORT).show();
+                });
+                return;
+            }
             try {
-                InputImage image = InputImage.fromFilePath(this, uri);
+                InputImage image = InputImage.fromBitmap(enhanced, 0);
                 recognizer.process(image)
                         .addOnSuccessListener(visionText -> {
                             recognizer.close();
@@ -1594,7 +1608,8 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
                                         "Couldn't read that photo.",
                                         Toast.LENGTH_SHORT).show();
                             });
-                        });
+                        })
+                        .addOnCompleteListener(task -> enhanced.recycle());
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     if (progress != null) progress.setVisibility(View.GONE);
@@ -1605,6 +1620,16 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
             }
         }).start();
     }
+
+    /**
+     * Server BERT spellcheck toggle. Experiment 2026-10-14: with the flag
+     * off, the local fixes (input upscaling + OCR confusion matrix) fully
+     * remedied the "AM purpose Fou" phrase-fragmentation class, but
+     * word-level typos on non-flagged words ("Sugr", "fecilty", "esame")
+     * still needed the server's 50k vocabulary. Re-enabled: local handles
+     * phrases, server handles the long tail of word typos.
+     */
+    private static final boolean USE_SERVER_SPELLCHECK = true;
 
     /**
      * Scan -> verdict pipeline for OCR'd ingredient text (camera or gallery).
@@ -1633,8 +1658,19 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
                     }
                 }
             }
+            // 1. Phrase-level first (most context): fixes multi-word terms
+            //    like "AM purpose Fou" -> "all purpose flour" before any
+            //    word-level step can fragment them ("AM" -> "ham").
             String phraseFixed = OcrCorrector.correctPhrases(ocrText, multiWordTerms);
-            String corrected = OcrCorrector.correct(phraseFixed, dictWords);
+            // 2. Server-side BERT refinement for remaining OOV words
+            //    (currently disabled: local fixes under test, see
+            //    USE_SERVER_SPELLCHECK).
+            // 3. Local token-level finish (also the offline fallback when
+            //    the server is unreachable).
+            String serverCorrected = USE_SERVER_SPELLCHECK
+                    ? ServerSpellChecker.correct(phraseFixed) : null;
+            String base = serverCorrected != null ? serverCorrected : phraseFixed;
+            String corrected = OcrCorrector.correct(base, dictWords);
             FlaggedIngredientManager.MatchResult matchResult =
                     FlaggedIngredientManager.analyzeIngredients(
                             MainActivity.this, corrected);

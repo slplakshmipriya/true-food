@@ -26,6 +26,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.barelabel.app.ocr.OcrModelManager;
+import com.barelabel.app.ocr.OcrPreprocessor;
 import com.barelabel.app.search.IngredientSectionExtractor;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.mlkit.vision.common.InputImage;
@@ -217,8 +218,17 @@ public class IngredientScanActivity extends AppCompatActivity {
             return;
         }
 
-        InputImage image = InputImage.fromMediaImage(
-                imageProxy.getImage(), imageProxy.getImageInfo().getRotationDegrees());
+        // Preprocess before OCR: 2x upscale + contrast boost. ML Kit has no
+        // tunable knobs, so input quality is the lever for small label text.
+        final android.graphics.Bitmap enhanced = OcrPreprocessor.fromImageProxy(
+                imageProxy, imageProxy.getImageInfo().getRotationDegrees());
+        imageProxy.close();
+        if (enhanced == null) {
+            Toast.makeText(this, "Couldn't read the label — try again.",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        InputImage image = InputImage.fromBitmap(enhanced, 0);
 
         activeRecognizer.process(image)
                 .addOnSuccessListener(visionText -> {
@@ -241,7 +251,7 @@ public class IngredientScanActivity extends AppCompatActivity {
                         Toast.makeText(IngredientScanActivity.this,
                                 "Couldn't read the label — try again.",
                                 Toast.LENGTH_SHORT).show())
-                .addOnCompleteListener(task -> imageProxy.close());
+                .addOnCompleteListener(task -> enhanced.recycle());
     }
 
     @Override
