@@ -24,6 +24,8 @@ import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.barelabel.app.ocr.OcrModelManager;
 import com.barelabel.app.ocr.OcrPreprocessor;
@@ -69,6 +71,17 @@ public class IngredientScanActivity extends AppCompatActivity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+
+        // Keep the capture button above the Android system nav bar: pad the
+        // root by the system-bars inset (reported 2026-10-14: the button was
+        // hidden behind the bottom nav bar).
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+            int bottom = insets.getInsets(
+                    WindowInsetsCompat.Type.systemBars()).bottom;
+            v.setPadding(v.getPaddingLeft(), v.getPaddingTop(),
+                    v.getPaddingRight(), bottom);
+            return insets;
+        });
 
         previewView = new PreviewView(this);
         root.addView(previewView, new LinearLayout.LayoutParams(
