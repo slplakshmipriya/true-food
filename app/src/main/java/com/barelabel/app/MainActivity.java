@@ -65,6 +65,7 @@ import com.barelabel.app.ocr.OcrModelManager;
 import com.barelabel.app.ocr.OcrPreprocessor;
 import com.barelabel.app.ocr.ServerSpellChecker;
 import com.barelabel.app.llm.LlmSpellChecker;
+import com.barelabel.app.llm.VerdictExplainer;
 import com.barelabel.app.search.BarcodeSeed;
 import com.barelabel.app.search.CleanAlternateFinder;
 import com.barelabel.app.search.DisambiguationDecider;
@@ -93,6 +94,7 @@ public class MainActivity extends AppCompatActivity {
     private Button searchButton;
     private ProgressBar progress;
     private TextView statusText, verdictText, flaggedText, ingredientsText;
+    private TextView explanationText;
     private LinearLayout resultCard;
     private LinearLayout disambiguationCard, disambiguationList;
     private TextView disambiguationSubtitle;
@@ -485,6 +487,7 @@ private void refreshRecents() {
         progress = findViewById(R.id.progress);
         statusText = findViewById(R.id.statusText);
         verdictText = findViewById(R.id.verdictText);
+        explanationText = findViewById(R.id.explanationText);
         flaggedText = findViewById(R.id.flaggedText);
         ingredientsText = findViewById(R.id.ingredientsText);
         resultCard = findViewById(R.id.resultCard);
@@ -896,7 +899,7 @@ private void refreshRecents() {
     resultCard.setAlpha(0f);
     resultCard.setTranslationY(dp(12));
     resultCard.animate().alpha(1f).translationY(0f).setDuration(250).start();
-    bindFlaggedList(null);
+    bindFlaggedList(null, true);
 
     int colorClean = C_GREEN_800;
     int colorDirty = C_RED_800;
@@ -936,6 +939,7 @@ private void refreshRecents() {
         verdictText.setTextColor(colorMuted);
         if (flaggedTitle != null) flaggedTitle.setVisibility(View.GONE);
         if (flaggedText != null) flaggedText.setVisibility(View.GONE);
+        if (explanationText != null) explanationText.setVisibility(View.GONE);
         if (buyButton != null) buyButton.setVisibility(View.GONE);
         if (shareVerdictButton != null) shareVerdictButton.setVisibility(View.GONE);
         bindVerdictChips(null);
@@ -1006,6 +1010,7 @@ private void refreshRecents() {
         verdictText.setTextColor(colorMuted);
         if (flaggedTitle != null) flaggedTitle.setVisibility(View.GONE);
         if (flaggedText != null) flaggedText.setVisibility(View.GONE);
+        if (explanationText != null) explanationText.setVisibility(View.GONE);
         if (buyButton != null) buyButton.setVisibility(View.GONE);
         if (shareVerdictButton != null) shareVerdictButton.setVisibility(View.GONE);
         bindVerdictChips(null);
@@ -1065,13 +1070,16 @@ private void refreshRecents() {
     }
 
     // 2. Verdict Card Styling & Flagged List Output
+    // Paid users get the LLM verdict explanation in-card, replacing the
+    // per-row expandable rule-based reasons; free users keep the rows.
+    boolean premium = PremiumGates.isOcrScanEnabled(this);
     if (isClean) {
         resultCard.setBackgroundResource(R.drawable.verdict_clean);
         verdictText.setText("✓ CLEAN INGREDIENTS");
         verdictText.setTextColor(colorClean);
         if (flaggedTitle != null) flaggedTitle.setVisibility(View.GONE);
         if (flaggedText != null) flaggedText.setVisibility(View.GONE);
-        bindFlaggedList(null);
+        bindFlaggedList(null, !premium);
     } else {
         resultCard.setBackgroundResource(R.drawable.verdict_dirty);
         verdictText.setText("⚠ DIRTY INGREDIENTS");
@@ -1079,9 +1087,11 @@ private void refreshRecents() {
         if (flaggedTitle != null) flaggedTitle.setVisibility(View.VISIBLE);
         if (flaggedText != null) flaggedText.setVisibility(View.GONE);
 
-        // Expandable per-ingredient rows with plain-English reasons.
-        bindFlaggedList(result);
+        // Expandable per-ingredient rows with plain-English reasons
+        // (free users; premium gets the LLM explanation instead).
+        bindFlaggedList(result, !premium);
     }
+    bindVerdictExplanation(result, isClean, premium);
 
     // 3. Verdict chips: per-category pass/fail so the verdict shows its work.
     bindVerdictChips(result);
@@ -1185,7 +1195,7 @@ private void updateAffiliateDisclosure(ProductResult result,
  * One expandable row per flagged ingredient: tap to reveal the plain-English
  * reason for its category. Replaces the old static grouped text dump.
  */
-private void bindFlaggedList(ProductResult result) {
+private void bindFlaggedList(ProductResult result, boolean expandable) {
     if (flaggedList == null) return;
     flaggedList.removeAllViews();
     if (result == null || result.matchResult == null
@@ -1197,15 +1207,16 @@ private void bindFlaggedList(ProductResult result) {
     for (Map.Entry<String, List<String>> entry : result.matchResult.categoryMap.entrySet()) {
         String category = entry.getKey();
         for (String ingredient : entry.getValue()) {
-            flaggedList.addView(buildFlaggedRow(ingredient, category));
+            flaggedList.addView(buildFlaggedRow(ingredient, category, expandable));
             any = true;
         }
     }
     flaggedList.setVisibility(any ? View.VISIBLE : View.GONE);
 }
 
-/** A single tappable flagged-ingredient row with a collapsible reason. */
-private View buildFlaggedRow(final String ingredient, final String category) {
+/** A flagged-ingredient row; expandable shows the rule-based reason on tap. */
+private View buildFlaggedRow(final String ingredient, final String category,
+                             boolean expandable) {
     LinearLayout row = new LinearLayout(this);
     row.setOrientation(LinearLayout.VERTICAL);
     row.setPadding(dp(12), dp(8), dp(12), dp(8));
@@ -1234,7 +1245,9 @@ private View buildFlaggedRow(final String ingredient, final String category) {
     chevron.setText("›");
     chevron.setTextSize(18f);
     chevron.setTextColor(C_GRAY_600);
-    header.addView(chevron);
+    if (expandable) {
+        header.addView(chevron);
+    }
     row.addView(header);
 
     final TextView reason = new TextView(this);
@@ -1244,14 +1257,115 @@ private View buildFlaggedRow(final String ingredient, final String category) {
     reason.setTextColor(C_GRAY_600);
     reason.setPadding(0, dp(4), 0, 0);
     reason.setVisibility(View.GONE);
-    row.addView(reason);
+    if (expandable) {
+        row.addView(reason);
+    }
 
-    row.setOnClickListener(v -> {
-        boolean expand = reason.getVisibility() != View.VISIBLE;
-        reason.setVisibility(expand ? View.VISIBLE : View.GONE);
-        chevron.setText(expand ? "⌄" : "›");
-    });
+    if (expandable) {
+        row.setOnClickListener(v -> {
+            boolean expand = reason.getVisibility() != View.VISIBLE;
+            reason.setVisibility(expand ? View.VISIBLE : View.GONE);
+            chevron.setText(expand ? "⌄" : "›");
+        });
+    } else {
+        row.setClickable(false);
+        row.setFocusable(false);
+    }
     return row;
+}
+
+/**
+ * LLM verdict explanation for premium users, shown inside the verdict card.
+ * Free users keep the per-row expandable rule-based reasons and never see
+ * this view. Fetched async; a stale result (user moved on) is dropped.
+ */
+private void bindVerdictExplanation(ProductResult result, boolean isClean,
+                                    boolean premium) {
+    if (explanationText == null) {
+        return;
+    }
+    if (!premium) {
+        explanationText.setVisibility(View.GONE);
+        return;
+    }
+    explanationText.setVisibility(View.VISIBLE);
+    explanationText.setText("Explaining…");
+    final ProductResult forResult = result;
+    final boolean clean = isClean;
+    new Thread(() -> {
+        List<VerdictExplainer.Flag> flags = new ArrayList<>();
+        String ingredients = "";
+        String allergen = "";
+        if (forResult != null) {
+            ingredients = forResult.ingredients == null
+                    ? "" : forResult.ingredients;
+            allergen = extractAllergenAdvice(ingredients);
+            if (forResult.matchResult != null
+                    && forResult.matchResult.categoryMap != null) {
+                for (Map.Entry<String, List<String>> e
+                        : forResult.matchResult.categoryMap.entrySet()) {
+                    if (e.getValue() == null) {
+                        continue;
+                    }
+                    for (String ing : e.getValue()) {
+                        flags.add(new VerdictExplainer.Flag(ing, e.getKey()));
+                    }
+                }
+            }
+        }
+        String explanation = VerdictExplainer.explain(clean, flags,
+                ingredients, enabledFilterNames(),
+                superiorIn(ingredients), allergen);
+        runOnUiThread(() -> {
+            if (currentPrimaryResult != forResult) {
+                return; // stale: user moved on
+            }
+            if (explanation != null && !explanation.isEmpty()) {
+                explanationText.setText(explanation);
+            } else {
+                explanationText.setVisibility(View.GONE);
+            }
+        });
+    }).start();
+}
+
+/** Names of the user's currently enabled flagged-category filters. */
+private List<String> enabledFilterNames() {
+    List<String> out = new ArrayList<>();
+    for (String category : getFlaggedCategories()) {
+        if (CategoryPreferenceManager.isCategoryEnabled(this, category)) {
+            out.add(category);
+        }
+    }
+    return out;
+}
+
+/** Superior ingredients present in the ingredient list (deduped). */
+private List<String> superiorIn(String ingredients) {
+    List<String> out = new ArrayList<>();
+    if (ingredients == null) {
+        return out;
+    }
+    for (String token : ingredients.split(",")) {
+        String t = token.trim();
+        if (!t.isEmpty()
+                && FlaggedIngredientManager.isSuperiorIngredient(this, t)
+                && !out.contains(t)) {
+            out.add(t);
+        }
+    }
+    return out;
+}
+
+/** Best-effort extraction of an "allergen advice" sentence, if present. */
+private String extractAllergenAdvice(String ingredients) {
+    if (ingredients == null) {
+        return "";
+    }
+    java.util.regex.Matcher m = java.util.regex.Pattern
+            .compile("(?i)allergen advice[^.]*\\.?")
+            .matcher(ingredients);
+    return m.find() ? m.group().trim() : "";
 }
 
 /**
@@ -1637,13 +1751,12 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
     private static final boolean USE_SERVER_SPELLCHECK = true;
 
     /**
-     * LLM contextual spellcheck toggle (2026-10-15): final step of the
+     * LLM contextual spellcheck (2026-10-15): final step of the
      * OCR -&gt; rudimentary spellcheck -&gt; LLM spellcheck pipeline.
      * Validated against device OCR output with qwen/qwen3.8-27b on the Groq
-     * free tier. Off by default until the GROQ_API_KEY is configured and
-     * the premium gating decision is made.
+     * free tier. Null-safe: without GROQ_API_KEY the step is a no-op.
      */
-    private static final boolean USE_LLM_SPELLCHECK = false;
+    private static final boolean USE_LLM_SPELLCHECK = true;
 
     /**
      * Scan -> verdict pipeline for OCR'd ingredient text (camera or gallery).
