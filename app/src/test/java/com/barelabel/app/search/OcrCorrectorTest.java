@@ -119,4 +119,37 @@ public class OcrCorrectorTest {
         assertEquals("flour",
                 OcrCorrector.correctPhrases("flour", new HashSet<String>()));
     }
+
+    // ---- confusion-aware distance: merged/split OCR glyphs ----
+
+    @Test
+    public void confusionFixesMergedGlyphs() {
+        // "rn" read as "m": classic merged-glyph OCR error.
+        assertEquals("milk", OcrCorrector.correct("rnilk", FLAGGED_WORDS));
+        // "c" for "e" in small print.
+        assertEquals("preservative",
+                OcrCorrector.correct("prescrvative", FLAGGED_WORDS));
+    }
+
+    @Test
+    public void confusionDistanceWeightsMerges() {
+        // "AM" -> "all": the "ll" -> "M" merge costs 0.6, not 2.
+        assertEquals(0.6, OcrCorrector.confusionDistance("am", "all", 2.0),
+                0.001);
+        assertEquals(0.5,
+                OcrCorrector.confusionDistance(
+                        "prescrvative", "preservative", 2.0),
+                0.001);
+        assertEquals(-1.0,
+                OcrCorrector.confusionDistance("xyz", "flour", 1.0), 0.001);
+    }
+
+    @Test
+    public void confusionDoesNotForceBadCorrections() {
+        // "con oil" is still tied between "corn oil" and "cod oil".
+        assertEquals("con oil",
+                OcrCorrector.correctPhrases("con oil", PHRASE_TERMS));
+        // Unknown words with no close neighbor stay untouched.
+        assertEquals("quinoa", OcrCorrector.correct("quinoa", FLAGGED_WORDS));
+    }
 }

@@ -62,6 +62,7 @@ import com.barelabel.app.FlaggedIngredientManager;
 import com.barelabel.app.billing.PremiumGates;
 import com.barelabel.app.images.ProductImageResolver;
 import com.barelabel.app.ocr.OcrModelManager;
+import com.barelabel.app.ocr.OcrPreprocessor;
 import com.barelabel.app.ocr.ServerSpellChecker;
 import com.barelabel.app.search.BarcodeSeed;
 import com.barelabel.app.search.CleanAlternateFinder;
@@ -1567,8 +1568,20 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
     /** Runs ML Kit OCR on a gallery image; the model is already ensured. */
     private void runGalleryOcr(Uri uri, TextRecognizer recognizer) {
         new Thread(() -> {
+            android.graphics.Bitmap enhanced =
+                    OcrPreprocessor.fromGalleryUri(getContentResolver(), uri);
+            if (enhanced == null) {
+                recognizer.close();
+                runOnUiThread(() -> {
+                    if (progress != null) progress.setVisibility(View.GONE);
+                    Toast.makeText(MainActivity.this,
+                            "Couldn't open that photo.",
+                            Toast.LENGTH_SHORT).show();
+                });
+                return;
+            }
             try {
-                InputImage image = InputImage.fromFilePath(this, uri);
+                InputImage image = InputImage.fromBitmap(enhanced, 0);
                 recognizer.process(image)
                         .addOnSuccessListener(visionText -> {
                             recognizer.close();
@@ -1595,7 +1608,8 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
                                         "Couldn't read that photo.",
                                         Toast.LENGTH_SHORT).show();
                             });
-                        });
+                        })
+                        .addOnCompleteListener(task -> enhanced.recycle());
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     if (progress != null) progress.setVisibility(View.GONE);
@@ -1606,6 +1620,15 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
             }
         }).start();
     }
+
+    /**
+     * Experiment (2026-10-14): skip the server BERT spellcheck to test
+     * whether the local fixes (input upscaling in OcrPreprocessor +
+     * OCR confusion matrix in OcrCorrector) already remedy "AM purpose
+     * Fou"-class errors on their own. ServerSpellChecker is intact; flip
+     * this back to true to re-enable the server refinement step.
+     */
+    private static final boolean USE_SERVER_SPELLCHECK = false;
 
     /**
      * Scan -> verdict pipeline for OCR'd ingredient text (camera or gallery).
@@ -1638,10 +1661,13 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
             //    like "AM purpose Fou" -> "all purpose flour" before any
             //    word-level step can fragment them ("AM" -> "ham").
             String phraseFixed = OcrCorrector.correctPhrases(ocrText, multiWordTerms);
-            // 2. Server-side BERT refinement for remaining OOV words.
+            // 2. Server-side BERT refinement for remaining OOV words
+            //    (currently disabled: local fixes under test, see
+            //    USE_SERVER_SPELLCHECK).
             // 3. Local token-level finish (also the offline fallback when
             //    the server is unreachable).
-            String serverCorrected = ServerSpellChecker.correct(phraseFixed);
+            String serverCorrected = USE_SERVER_SPELLCHECK
+                    ? ServerSpellChecker.correct(phraseFixed) : null;
             String base = serverCorrected != null ? serverCorrected : phraseFixed;
             String corrected = OcrCorrector.correct(base, dictWords);
             FlaggedIngredientManager.MatchResult matchResult =
