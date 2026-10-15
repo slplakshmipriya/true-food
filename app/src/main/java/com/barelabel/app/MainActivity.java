@@ -690,7 +690,7 @@ private void refreshRecents() {
                 runOnUiThread(() -> {
                     if (generation != searchGeneration) return; // superseded
                     showResult(primaryResult, finalCategory, finalCategoryIntent,
-                            finalFlaggedCategories, finalReliefCounts, fetchedById);
+                            finalFlaggedCategories, finalReliefCounts, fetchedById, true);
                 });
 
             } catch (Exception e) {
@@ -872,7 +872,7 @@ private void refreshRecents() {
 
     private void showResult(ProductResult result, String foodType, boolean categoryIntent,
                             Set<String> flaggedCategories, Map<String, Integer> reliefCounts,
-                            boolean fetchedById) {
+                            boolean fetchedById, boolean saveToHistory) {
         currentPrimaryResult = result;
         clearComparePicks();
         if (disambiguationCard != null) disambiguationCard.setVisibility(View.GONE);
@@ -1024,9 +1024,13 @@ private void refreshRecents() {
                 true, flaggedCount, categoryCount));
     }
 
-    // Persist this scan to history (deduplicated, newest-first). Disk I/O off the UI thread.
-    final ProductResult scannedResult = result;
-    new Thread(() -> ScanHistoryRepository.saveScan(MainActivity.this, scannedResult)).start();
+    // Persist this scan to history (deduplicated, newest-first), unless the
+    // caller opted out (OCR label scans are transient reads, not products).
+    // Disk I/O off the UI thread.
+    if (saveToHistory) {
+        final ProductResult scannedResult = result;
+        new Thread(() -> ScanHistoryRepository.saveScan(MainActivity.this, scannedResult)).start();
+    }
 
     // 1. BUY Button Visibility (+ FTC disclosure shown with it)
     if (buyButton != null) {
@@ -1684,13 +1688,15 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
     }
 
     /**
-     * Renders a scanned-label verdict through the normal flow. The label came
-     * from the camera, not USDA: alternates, the "no exact match" notice and
-     * the USDA source line are all suppressed.
+     * Renders a scanned-label verdict through the normal flow, without
+     * saving to history: a label read is transient (no product identity),
+     * unlike a barcode/product scan. The label came from the camera, not
+     * USDA: alternates, the "no exact match" notice and the USDA source
+     * line are all suppressed.
      */
     private void showScannedLabelResult(ProductResult result) {
         showResult(result, "Uncategorized", false,
-                Collections.emptySet(), Collections.emptyMap(), false);
+                Collections.emptySet(), Collections.emptyMap(), false, false);
         alternatesController.hide();
         updateSourceLine();
         updateStickyBar();
