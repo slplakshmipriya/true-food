@@ -602,6 +602,66 @@
                 android:text="We may earn a commission when you buy through links on this page."
                 android:textColor="#6B7280"
                 android:textSize="11sp" />
+
+            <!-- Safety reports section (NA-06, Contract §6.4): appended
+                 content below the BUY! button, inside the verdict card.
+                 Present only when alerts exist for the product; the
+                 fixed top block above is never touched by it. -->
+            <LinearLayout
+                android:id="@+id/safetyReportsSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:id="@+id/safetyReportsHeader"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clickable="true"
+                    android:contentDescription="Safety reports, expanded"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="10dp">
+
+                    <TextView
+                        android:id="@+id/safetyReportsTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Safety reports"
+                        android:textColor="#111827"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/safetyReportsChevron"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="▼"
+                        android:textColor="#374151"
+                        android:textSize="14sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/safetyReportsPanel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_card"
+                    android:orientation="vertical"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp">
+
+                    <LinearLayout
+                        android:id="@+id/safetyReportsItems"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+                </LinearLayout>
+            </LinearLayout>
             <CheckBox
                 android:id="@+id/verdictCompareBox"
                 android:layout_width="wrap_content"

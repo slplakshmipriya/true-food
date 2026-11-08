@@ -82,8 +82,11 @@ import com.barelabel.app.search.IngredientSectionExtractor;
 import com.barelabel.app.search.OcrCorrector;
 import com.barelabel.app.ui.AlternatesCardController;
 import com.barelabel.app.ui.CompareViewBuilder;
+import com.barelabel.app.news.SafetyAlert;
+import com.barelabel.app.news.SafetyAlertService;
 import com.barelabel.app.ui.NutritionPanelController;
 import com.barelabel.app.ui.ProductDetailDialog;
+import com.barelabel.app.ui.SafetyReportsPanelController;
 import com.barelabel.app.util.CategorySearchDecider;
 import com.barelabel.app.util.GenericWords;
 import com.barelabel.app.util.StringNormalizer;
@@ -160,6 +163,11 @@ public class MainActivity extends AppCompatActivity {
     private TextView ingredientsVerdictBubble, nutritionVerdictBubble;
     private LinearLayout ingredientDetailPanel, nutritionDetailPanel;
     private NutritionPanelController nutritionPanelController;
+
+    // Safety reports section (NA-06, Contract §6.4): appended content
+    // below the BUY! button, bound by its own controller.
+    private LinearLayout safetyReportsSection;
+    private SafetyReportsPanelController safetyReportsController;
 
     // Cached flagged-category names from flagged_ingredients.json
     private List<String> flaggedCategoriesCache = null;
@@ -553,6 +561,8 @@ private void refreshRecents() {
         ingredientDetailPanel = findViewById(R.id.ingredientDetailPanel);
         nutritionDetailPanel = findViewById(R.id.nutritionDetailPanel);
         nutritionPanelController = new NutritionPanelController(this);
+        safetyReportsSection = findViewById(R.id.safetyReportsSection);
+        safetyReportsController = new SafetyReportsPanelController(this);
     }
 
     /** Bubble click wiring: each bubble toggles only its own detail panel. */
@@ -621,7 +631,59 @@ private void refreshRecents() {
         if (nutritionPanelController != null) {
             nutritionPanelController.reset(nutritionDetailPanel);
         }
+        if (safetyReportsController != null) {
+            // NA-06: a new card starts with no safety section — the
+            // previous product's alerts and collapse state never carry.
+            safetyReportsController.reset(safetyReportsSection);
+        }
         updateBubbleContentDescriptions();
+    }
+
+    /**
+     * NA-06 (Contract §6.4/§6.5, BL-S4): loads safety alerts for the
+     * product just bound and inserts the "Safety reports" section
+     * below the BUY! button when they arrive. Runs off the UI thread
+     * through the NA-04 service (which never throws, §7); an empty
+     * result or any failure leaves the card exactly as it was — no
+     * spinner, no placeholder. The stale-result guard mirrors the
+     * LLM summary's: if the user has moved on to another product,
+     * the late result is dropped. Read-only display: nothing here
+     * touches verdict, score, or history state (BL-S6), and there
+     * is no premium gate in the path (BL-S7).
+     */
+    private void loadSafetyReports(ProductResult result, String foodType) {
+        if (result == null || safetyReportsController == null
+                || safetyReportsSection == null) {
+            return;
+        }
+        final ProductResult forResult = result;
+        final String productName = result.name != null ? result.name : "";
+        final String category = !TextUtils.isEmpty(result.foodCategory)
+                ? result.foodCategory
+                : (foodType != null ? foodType : "");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                List<SafetyAlert> alerts;
+                try {
+                    alerts = new SafetyAlertService(MainActivity.this)
+                            .alertsForProduct(productName, category);
+                } catch (Throwable t) {
+                    alerts = Collections.emptyList();
+                }
+                final List<SafetyAlert> arrived = alerts;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (currentPrimaryResult != forResult) {
+                            return; // stale: user moved on
+                        }
+                        safetyReportsController.bind(
+                                safetyReportsSection, arrived);
+                    }
+                });
+            }
+        }).start();
     }
 
     /**
@@ -1454,6 +1516,10 @@ private void refreshRecents() {
     //    replace the large verdictText and the per-category verdict
     //    chips for found products — the chips are no longer rendered.
     bindVerdictBubblesAndPanels(result, isClean);
+
+    // 3b. Safety reports section (NA-06): async, appended below the
+    //     BUY! button; inserts only when alerts arrive (§6.5).
+    loadSafetyReports(result, foodType);
 
     // 4. Clean Alternates Section
     alternatesController.show(foodType, categoryIntent, isClean, flaggedCategories,
