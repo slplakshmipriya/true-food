@@ -63,7 +63,18 @@ with the candidate excluded from its own peer set (peerCount = 12):
 
 The second clean-and-safe-looking product is fdcId 990012
 ("Baked Potato Crisps, Sea Salt", sodium 180 mg, saturated fat 1.5 g,
-fiber 6.0 g).
+fiber 6.0 g). Its carbohydrates are 62.0 g: above the 60 g flag floor,
+but its raw percentile is 83.3 (three-way tie at 62 g with fdcId
+990003 and 990010; (9 below + 0.5 * 2 equal) / 12), below the 85
+threshold, so the relative+floor rule does not fire and the product
+is genuinely unflagged under every section 1.2 flag rule, as is
+fdcId 990013. (An earlier 72.0 g value was the cohort maximum at
+percentile 100.0 and did flag; any value below 62 g would instead
+push fdcId 990003 and 990010 over the carbs percentile threshold.)
+
+Deferred to NUT-11: broader server-marker file-type scope, and
+stronger fixture validation (plausible-range checks and
+machine-checked percentile claims).
 ----------------------------------------------------------------------
 """
 
@@ -338,8 +349,17 @@ def check_chips_fixture():
         failures.append(f"chips fixture missing: {CHIPS_FIXTURE}")
         print(f"  FAIL  fixture missing: {CHIPS_FIXTURE.relative_to(ROOT)}")
         return
-    with open(CHIPS_FIXTURE, encoding="utf-8") as fh:
-        doc = json.load(fh)
+    try:
+        with open(CHIPS_FIXTURE, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except Exception as exc:  # noqa: BLE001 - malformed fixture is a clean FAIL
+        failures.append(f"chips fixture does not parse: {exc}")
+        print(f"  FAIL  fixture does not parse: {exc}")
+        return
+    if not isinstance(doc, dict):
+        failures.append("chips fixture top level is not a JSON object")
+        print("  FAIL  fixture top level is not a JSON object")
+        return
     foods = doc.get("foods") or []
     print(f"  products: {len(foods)}")
     if len(foods) < 12:
