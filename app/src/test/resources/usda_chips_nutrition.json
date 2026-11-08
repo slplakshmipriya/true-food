@@ -1,0 +1,1278 @@
+{
+  "totalHits": 13,
+  "currentPage": 1,
+  "totalPages": 1,
+  "pageList": [
+    1
+  ],
+  "foodSearchCriteria": {
+    "dataType": [
+      "Branded"
+    ],
+    "query": "chips",
+    "generalSearchInput": "chips",
+    "pageNumber": 1,
+    "numberOfResultsPerPage": 25,
+    "pageSize": 25,
+    "requireAllWords": false,
+    "foodTypes": [
+      "Branded"
+    ]
+  },
+  "foods": [
+    {
+      "fdcId": 990001,
+      "description": "Potato Chips, Classic Salted",
+      "dataType": "Branded",
+      "gtinUpc": "002800099001",
+      "publishedDate": "2026-09-26",
+      "brandOwner": "Crunchy Ridge Foods, Inc.",
+      "brandName": "CRUNCHY RIDGE",
+      "ingredients": "POTATOES, VEGETABLE OIL (SUNFLOWER, CANOLA, AND/OR SOYBEAN OIL), SALT, SOY LECITHIN.",
+      "marketCountry": "United States",
+      "foodCategory": "Chips, Pretzels & Snacks",
+      "modifiedDate": "2026-09-26",
+      "dataSource": "LI",
+      "servingSizeUnit": "g",
+      "servingSize": 28.0,
+      "householdServingFullText": "about 15 chips",
+      "foodNutrients": [
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 536
+        },
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 5.0
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 35.0
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 53.0
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 0.5
+        },
+        {
+          "nutrientId": 1235,
+          "nutrientName": "Sugars, added",
+          "nutrientNumber": "540",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 1.0
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 920
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 10.0
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.1
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "fdcId": 990002,
+      "description": "Potato Chips, Sea Salt",
+      "dataType": "Branded",
+      "gtinUpc": "002800099002",
+      "publishedDate": "2026-09-26",
+      "brandOwner": "Kettle Valley Snacks LLC",
+      "brandName": "KETTLE VALLEY",
+      "ingredients": "POTATOES, AVOCADO OIL, SEA SALT.",
+      "marketCountry": "United States",
+      "foodCategory": "Chips, Pretzels & Snacks",
+      "modifiedDate": "2026-09-26",
+      "dataSource": "LI",
+      "servingSizeUnit": "g",
+      "servingSize": 28.0,
+      "householdServingFullText": "about 15 chips",
+      "foodNutrients": [
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 520
+        },
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 6.0
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 32.0
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 52.0
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 1.0
+        },
+        {
+          "nutrientId": 1235,
+          "nutrientName": "Sugars, added",
+          "nutrientNumber": "540",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 2.0
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 680
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 4.5
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "fdcId": 990003,
+      "description": "Tortilla Chips, Restaurant Style",
+      "dataType": "Branded",
+      "gtinUpc": "002800099003",
+      "publishedDate": "2026-09-26",
+      "brandOwner": "Casa Sol Foods, Inc.",
+      "brandName": "CASA SOL",
+      "ingredients": "STONE GROUND CORN, SUNFLOWER OIL, SALT, LIME.",
+      "marketCountry": "United States",
+      "foodCategory": "Chips, Pretzels & Snacks",
+      "modifiedDate": "2026-09-26",
+      "dataSource": "LI",
+      "servingSizeUnit": "g",
+      "servingSize": 28.0,
+      "householdServingFullText": "about 15 chips",
+      "foodNutrients": [
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 500
+        },
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 7.0
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 25.0
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 62.0
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 1.5
+        },
+        {
+          "nutrientId": 1235,
+          "nutrientName": "Sugars, added",
+          "nutrientNumber": "540",
+          "unitName": "G",
+          "value": 0.5
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 2.5
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 620
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 3.5
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "fdcId": 990004,
+      "description": "Potato Chips, Sour Cream & Onion",
+      "dataType": "Branded",
+      "gtinUpc": "002800099004",
+      "publishedDate": "2026-09-26",
+      "brandOwner": "Crunchy Ridge Foods, Inc.",
+      "brandName": "CRUNCHY RIDGE",
+      "ingredients": "POTATOES, VEGETABLE OIL (SUNFLOWER, CANOLA, AND/OR SOYBEAN OIL), WHEY, ONION POWDER, SALT, SOUR CREAM POWDER.",
+      "marketCountry": "United States",
+      "foodCategory": "Chips, Pretzels & Snacks",
+      "modifiedDate": "2026-09-26",
+      "dataSource": "LI",
+      "servingSizeUnit": "g",
+      "servingSize": 28.0,
+      "householdServingFullText": "about 15 chips",
+      "foodNutrients": [
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 530
+        },
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 5.5
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 33.0
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 54.0
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 2.0
+        },
+        {
+          "nutrientId": 1235,
+          "nutrientName": "Sugars, added",
+          "nutrientNumber": "540",
+          "unitName": "G",
+          "value": 1.0
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 3.0
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 580
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 5.0
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "fdcId": 990005,
+      "description": "Corn Chips, Original",
+      "dataType": "Branded",
+      "gtinUpc": "002800099005",
+      "publishedDate": "2026-09-26",
+      "brandOwner": "Golden Field Snacks, Inc.",
+      "brandName": "GOLDEN FIELD",
+      "ingredients": "CORN, CORN OIL, SALT.",
+      "marketCountry": "United States",
+      "foodCategory": "Chips, Pretzels & Snacks",
+      "modifiedDate": "2026-09-26",
+      "dataSource": "LI",
+      "servingSizeUnit": "g",
+      "servingSize": 28.0,
+      "householdServingFullText": "about 15 chips",
+      "foodNutrients": [
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 540
+        },
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 6.5
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 30.0
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 56.0
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 0.8
+        },
+        {
+          "nutrientId": 1235,
+          "nutrientName": "Sugars, added",
+          "nutrientNumber": "540",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 3.5
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 540
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 4.0
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "fdcId": 990006,
+      "description": "Veggie Chips, Mixed Root",
+      "dataType": "Branded",
+      "gtinUpc": "002800099006",
+      "publishedDate": "2026-09-26",
+      "brandOwner": "Harvest Lane Foods LLC",
+      "brandName": "HARVEST LANE",
+      "ingredients": "SWEET POTATO, TARO, PARSNIP, SUNFLOWER OIL, SEA SALT.",
+      "marketCountry": "United States",
+      "foodCategory": "Chips, Pretzels & Snacks",
+      "modifiedDate": "2026-09-26",
+      "dataSource": "LI",
+      "servingSizeUnit": "g",
+      "servingSize": 28.0,
+      "householdServingFullText": "about 15 chips",
+      "foodNutrients": [
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 480
+        },
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 4.0
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 24.0
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 60.0
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 3.0
+        },
+        {
+          "nutrientId": 1235,
+          "nutrientName": "Sugars, added",
+          "nutrientNumber": "540",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 3.0
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 480
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 3.0
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "fdcId": 990007,
+      "description": "Potato Chips, Lightly Salted",
+      "dataType": "Branded",
+      "gtinUpc": "002800099007",
+      "publishedDate": "2026-09-26",
+      "brandOwner": "Kettle Valley Snacks LLC",
+      "brandName": "KETTLE VALLEY",
+      "ingredients": "POTATOES, SUNFLOWER OIL, SEA SALT.",
+      "marketCountry": "United States",
+      "foodCategory": "Chips, Pretzels & Snacks",
+      "modifiedDate": "2026-09-26",
+      "dataSource": "LI",
+      "servingSizeUnit": "g",
+      "servingSize": 28.0,
+      "householdServingFullText": "about 15 chips",
+      "foodNutrients": [
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 510
+        },
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 6.0
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 30.0
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 53.0
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 0.6
+        },
+        {
+          "nutrientId": 1235,
+          "nutrientName": "Sugars, added",
+          "nutrientNumber": "540",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 4.0
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 450
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 3.2
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "fdcId": 990008,
+      "description": "Pita Chips, Sea Salt",
+      "dataType": "Branded",
+      "gtinUpc": "002800099008",
+      "publishedDate": "2026-09-26",
+      "brandOwner": "Mediterranean Table Foods, Inc.",
+      "brandName": "MEDITERRANEAN TABLE",
+      "ingredients": "WHEAT FLOUR, SUNFLOWER OIL, YEAST, SEA SALT, SUGAR.",
+      "marketCountry": "United States",
+      "foodCategory": "Chips, Pretzels & Snacks",
+      "modifiedDate": "2026-09-26",
+      "dataSource": "LI",
+      "servingSizeUnit": "g",
+      "servingSize": 28.0,
+      "householdServingFullText": "about 15 chips",
+      "foodNutrients": [
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 460
+        },
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 9.0
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 18.0
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 64.0
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 1.2
+        },
+        {
+          "nutrientId": 1235,
+          "nutrientName": "Sugars, added",
+          "nutrientNumber": "540",
+          "unitName": "G",
+          "value": 0.5
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 2.8
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 410
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 2.0
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "fdcId": 990009,
+      "description": "Tortilla Chips, Blue Corn",
+      "dataType": "Branded",
+      "gtinUpc": "002800099009",
+      "publishedDate": "2026-09-26",
+      "brandOwner": "Casa Sol Foods, Inc.",
+      "brandName": "CASA SOL",
+      "ingredients": "BLUE CORN, SUNFLOWER OIL, SEA SALT, LIME.",
+      "marketCountry": "United States",
+      "foodCategory": "Chips, Pretzels & Snacks",
+      "modifiedDate": "2026-09-26",
+      "dataSource": "LI",
+      "servingSizeUnit": "g",
+      "servingSize": 28.0,
+      "householdServingFullText": "about 15 chips",
+      "foodNutrients": [
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 490
+        },
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 7.5
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 24.0
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 60.0
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 0.9
+        },
+        {
+          "nutrientId": 1235,
+          "nutrientName": "Sugars, added",
+          "nutrientNumber": "540",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 3.2
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 380
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 2.8
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "fdcId": 990010,
+      "description": "Plantain Chips, Lightly Salted",
+      "dataType": "Branded",
+      "gtinUpc": "002800099010",
+      "publishedDate": "2026-09-26",
+      "brandOwner": "Tropical Harvest Snacks LLC",
+      "brandName": "TROPICAL HARVEST",
+      "ingredients": "PLANTAINS, PALM OIL, SEA SALT.",
+      "marketCountry": "United States",
+      "foodCategory": "Chips, Pretzels & Snacks",
+      "modifiedDate": "2026-09-26",
+      "dataSource": "LI",
+      "servingSizeUnit": "g",
+      "servingSize": 28.0,
+      "householdServingFullText": "about 15 chips",
+      "foodNutrients": [
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 500
+        },
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 3.0
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 28.0
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 62.0
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 2.5
+        },
+        {
+          "nutrientId": 1235,
+          "nutrientName": "Sugars, added",
+          "nutrientNumber": "540",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 4.5
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 350
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 4.2
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "fdcId": 990011,
+      "description": "Potato Chips, Kettle Cooked Reduced Salt",
+      "dataType": "Branded",
+      "gtinUpc": "002800099011",
+      "publishedDate": "2026-09-26",
+      "brandOwner": "Golden Field Snacks, Inc.",
+      "brandName": "GOLDEN FIELD",
+      "ingredients": "POTATOES, SUNFLOWER OIL, SEA SALT.",
+      "marketCountry": "United States",
+      "foodCategory": "Chips, Pretzels & Snacks",
+      "modifiedDate": "2026-09-26",
+      "dataSource": "LI",
+      "servingSizeUnit": "g",
+      "servingSize": 28.0,
+      "householdServingFullText": "about 15 chips",
+      "foodNutrients": [
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 515
+        },
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 6.2
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 31.0
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 52.0
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 0.7
+        },
+        {
+          "nutrientId": 1235,
+          "nutrientName": "Sugars, added",
+          "nutrientNumber": "540",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 3.8
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 320
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 3.8
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "fdcId": 990012,
+      "description": "Baked Potato Crisps, Sea Salt",
+      "dataType": "Branded",
+      "gtinUpc": "002800099012",
+      "publishedDate": "2026-09-26",
+      "brandOwner": "Harvest Lane Foods LLC",
+      "brandName": "HARVEST LANE",
+      "ingredients": "POTATO FLOUR, POTATO STARCH, SUNFLOWER OIL, SEA SALT, OAT FIBER.",
+      "marketCountry": "United States",
+      "foodCategory": "Chips, Pretzels & Snacks",
+      "modifiedDate": "2026-09-26",
+      "dataSource": "LI",
+      "servingSizeUnit": "g",
+      "servingSize": 28.0,
+      "householdServingFullText": "about 15 chips",
+      "foodNutrients": [
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 420
+        },
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 5.0
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 12.0
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 62.0
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 1.0
+        },
+        {
+          "nutrientId": 1235,
+          "nutrientName": "Sugars, added",
+          "nutrientNumber": "540",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 6.0
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 180
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 1.5
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "fdcId": 990013,
+      "description": "Lentil Chips, Sea Salt",
+      "dataType": "Branded",
+      "gtinUpc": "002800099013",
+      "publishedDate": "2026-09-26",
+      "brandOwner": "Verdant Fields Foods, Inc.",
+      "brandName": "VERDANT FIELDS",
+      "ingredients": "LENTIL FLOUR, POTATO STARCH, SUNFLOWER OIL, SEA SALT.",
+      "marketCountry": "United States",
+      "foodCategory": "Chips, Pretzels & Snacks",
+      "modifiedDate": "2026-09-26",
+      "dataSource": "LI",
+      "servingSizeUnit": "g",
+      "servingSize": 28.0,
+      "householdServingFullText": "about 15 chips",
+      "foodNutrients": [
+        {
+          "nutrientId": 1008,
+          "nutrientName": "Energy",
+          "nutrientNumber": "208",
+          "unitName": "KCAL",
+          "value": 430
+        },
+        {
+          "nutrientId": 1003,
+          "nutrientName": "Protein",
+          "nutrientNumber": "203",
+          "unitName": "G",
+          "value": 10.0
+        },
+        {
+          "nutrientId": 1004,
+          "nutrientName": "Total lipid (fat)",
+          "nutrientNumber": "204",
+          "unitName": "G",
+          "value": 14.0
+        },
+        {
+          "nutrientId": 1005,
+          "nutrientName": "Carbohydrate, by difference",
+          "nutrientNumber": "205",
+          "unitName": "G",
+          "value": 58.0
+        },
+        {
+          "nutrientId": 2000,
+          "nutrientName": "Total Sugars",
+          "nutrientNumber": "269",
+          "unitName": "G",
+          "value": 1.1
+        },
+        {
+          "nutrientId": 1235,
+          "nutrientName": "Sugars, added",
+          "nutrientNumber": "540",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1079,
+          "nutrientName": "Fiber, total dietary",
+          "nutrientNumber": "291",
+          "unitName": "G",
+          "value": 7.0
+        },
+        {
+          "nutrientId": 1093,
+          "nutrientName": "Sodium, Na",
+          "nutrientNumber": "307",
+          "unitName": "MG",
+          "value": 140
+        },
+        {
+          "nutrientId": 1258,
+          "nutrientName": "Fatty acids, total saturated",
+          "nutrientNumber": "606",
+          "unitName": "G",
+          "value": 1.2
+        },
+        {
+          "nutrientId": 1257,
+          "nutrientName": "Fatty acids, total trans",
+          "nutrientNumber": "605",
+          "unitName": "G",
+          "value": 0.0
+        },
+        {
+          "nutrientId": 1253,
+          "nutrientName": "Cholesterol",
+          "nutrientNumber": "601",
+          "unitName": "MG",
+          "value": 0
+        }
+      ]
+    }
+  ],
+  "aggregations": {
+    "dataType": {
+      "Branded": 13
+    },
+    "nutrients": {}
+  }
+}
