@@ -268,19 +268,25 @@ public class NutritionPanelController {
         header.addView(amount);
         row.addView(header);
 
+        // Detail line order: the per-100 comparison cluster first
+        // (peer statement + median, both on the per-100 basis and
+        // labelled as such), the per-serving amount last. Leading
+        // with the serving amount invited reading it against the
+        // per-100 median, which made correct percentiles look wrong.
         List<String> details = new ArrayList<>();
-        if (comparison.perServing != null) {
-            details.add(NutritionPanelPartition.formatAmount(
-                    comparison.perServing, unit) + " per serving");
-        }
         String peer = showComparison
                 ? NutritionPanelPartition.peerStatement(comparison) : "";
         if (!peer.isEmpty()) {
             details.add(peer);
             if (comparison.peerMedian != null) {
                 details.add("Median " + NutritionPanelPartition
-                        .formatAmount(comparison.peerMedian, unit));
+                        .formatAmount(comparison.peerMedian, unit)
+                        + " / 100 " + basis);
             }
+        }
+        if (comparison.perServing != null) {
+            details.add(NutritionPanelPartition.formatAmount(
+                    comparison.perServing, unit) + " per serving");
         }
         if (!details.isEmpty()) {
             TextView detail = new TextView(context);

@@ -95,10 +95,13 @@ import android.widget.CheckBox;
 public class MainActivity extends AppCompatActivity {
 
     private static final int C_GREEN_800 = android.graphics.Color.parseColor("#166534");
+    private static final int C_GREEN_900 = android.graphics.Color.parseColor("#14532D");
     private static final int C_GRAY_600 = android.graphics.Color.parseColor("#4B5563");
+    private static final int C_GRAY_700 = android.graphics.Color.parseColor("#374151");
     private static final int C_RED_900 = android.graphics.Color.parseColor("#7F1D1D");
     private static final int C_RED_800 = android.graphics.Color.parseColor("#991B1B");
     private static final int C_AMBER_800 = android.graphics.Color.parseColor("#92400E");
+    private static final int C_AMBER_900 = android.graphics.Color.parseColor("#78350F");
 
     // Member Variable Declarations
     private EditText searchBox;
@@ -154,7 +157,7 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout scoreStrip;
     private TextView ingredientScoreText, nutritionScoreText;
     private LinearLayout verdictBubblesRow;
-    private Button ingredientsVerdictBubble, nutritionVerdictBubble;
+    private TextView ingredientsVerdictBubble, nutritionVerdictBubble;
     private LinearLayout ingredientDetailPanel, nutritionDetailPanel;
     private NutritionPanelController nutritionPanelController;
 
@@ -683,7 +686,7 @@ private void refreshRecents() {
                     ? R.drawable.chip_clean_background
                     : R.drawable.chip_dirty_background);
             ingredientsVerdictBubble.setTextColor(
-                    isClean ? C_GREEN_800 : C_RED_800);
+                    isClean ? C_GREEN_900 : C_RED_900);
         }
         NutritionAnalysis analysis = result != null
                 ? result.nutritionAnalysis : null;
@@ -694,18 +697,18 @@ private void refreshRecents() {
                 nutritionVerdictBubble.setText("Nutrition · SAFE");
                 nutritionVerdictBubble.setBackgroundResource(
                         R.drawable.chip_clean_background);
-                nutritionVerdictBubble.setTextColor(C_GREEN_800);
+                nutritionVerdictBubble.setTextColor(C_GREEN_900);
             } else if (status
                     == com.barelabel.app.nutrition.NutritionStatus.CONCERNING) {
                 nutritionVerdictBubble.setText("Nutrition · CONCERNING");
                 nutritionVerdictBubble.setBackgroundResource(
                         R.drawable.chip_concern_background);
-                nutritionVerdictBubble.setTextColor(C_AMBER_800);
+                nutritionVerdictBubble.setTextColor(C_AMBER_900);
             } else {
                 nutritionVerdictBubble.setText("Nutrition · Unavailable");
                 nutritionVerdictBubble.setBackgroundResource(
                         R.drawable.chip_unavailable_background);
-                nutritionVerdictBubble.setTextColor(C_GRAY_600);
+                nutritionVerdictBubble.setTextColor(C_GRAY_700);
             }
         }
         if (nutritionPanelController != null) {

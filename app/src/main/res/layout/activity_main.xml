@@ -456,8 +456,11 @@
                 android:layout_marginTop="12dp"
                 android:orientation="horizontal">
 
-                <Button
+                <TextView
                     android:id="@+id/ingredientsVerdictBubble"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginEnd="8dp"
@@ -473,8 +476,11 @@
                     android:textSize="12sp"
                     android:textStyle="bold" />
 
-                <Button
+                <TextView
                     android:id="@+id/nutritionVerdictBubble"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:background="@drawable/chip_dirty_background"
