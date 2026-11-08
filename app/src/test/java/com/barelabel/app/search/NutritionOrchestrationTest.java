@@ -19,9 +19,11 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
 
+import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -517,6 +519,63 @@ public class NutritionOrchestrationTest {
     }
 
     @Test
+    public void topUp_validCountShrinkage_fenceDroppedPeers_triggerFetch()
+            throws Exception {
+        // Gap test (NUT-11): the top-up condition reads VALID peer
+        // counts (post plausible-range + MAD fence), not raw seed
+        // counts. Five seeds report sodium, but the fence drops the
+        // 4900 mg outlier (median 340, MAD 20, fence ~[236, 444]), so
+        // sodium has only 4 valid peers < minPeers 5 and the top-up
+        // must fire even though five seed products are present.
+        NutritionConfig config = config(5, 2);
+        ProductResult primary = midPrimary(config);
+        List<CohortPeer> seeds = NutritionCohortService.seedPeersFromCandidates(
+                Arrays.asList(
+                        fullFood(1L, "Peer One", 300.0),
+                        fullFood(2L, "Peer Two", 320.0),
+                        fullFood(3L, "Peer Three", 340.0),
+                        fullFood(4L, "Peer Four", 360.0),
+                        fullFood(5L, "Peer Five", 4900.0)), config);
+        FakePageSource source = new FakePageSource();
+        source.pages.add(pageOf(fullFood(6L, "Peer Six", 350.0)));
+
+        NutritionCohortService service = new NutritionCohortService(config, source);
+        NutritionAnalysis analysis = service.analyzePrimary(primary, seeds, CATEGORY);
+
+        // One page closes the valid-count gap (4900 stays fenced out,
+        // the page peer counts): no second page is fetched.
+        assertEquals(Collections.singletonList(1), source.requestedPages);
+        assertEquals(5, analysis.comparisons.get("sodium").peerCount);
+        // All six products survive as cohort members; only the sodium
+        // distribution lost the outlier.
+        assertEquals(6, analysis.cohortPeerCount);
+    }
+
+    @Test
+    public void topUp_emptyPageMidLoop_stopsFetching() throws Exception {
+        // Gap test (NUT-11): an empty page ends the top-up even when
+        // the page budget is not exhausted and minPeers is still
+        // unmet — the loop must break, not skip ahead to later pages.
+        NutritionConfig config = config(3, 3);
+        ProductResult primary = midPrimary(config);
+        FakePageSource source = new FakePageSource();
+        source.pages.add(pageOf(fullFood(1L, "Peer One", 300.0)));
+        source.pages.add(pageOf());
+        source.pages.add(pageOf(
+                fullFood(2L, "Peer Two", 400.0),
+                fullFood(3L, "Peer Three", 500.0)));
+
+        NutritionCohortService service = new NutritionCohortService(config, source);
+        NutritionAnalysis analysis = service.analyzePrimary(
+                primary, Collections.<CohortPeer>emptyList(), CATEGORY);
+
+        // Page 3 exists in the source but is never requested.
+        assertEquals(Arrays.asList(1, 2), source.requestedPages);
+        assertEquals(1, analysis.comparisons.get("sodium").peerCount);
+        assertEquals(NutritionStatus.UNAVAILABLE, analysis.status);
+    }
+
+    @Test
     public void topUp_pagePeers_parsedScreenedAndDeduped() throws Exception {
         NutritionConfig config = config(2, 1);
         ProductResult primary = midPrimary(config);
@@ -601,6 +660,59 @@ public class NutritionOrchestrationTest {
         assertTrue(source.requestedPages.isEmpty());
         assertEquals(NutritionStatus.UNAVAILABLE, analysis.status);
         assertSame(analysis, primary.nutritionAnalysis);
+    }
+
+    @Test
+    public void analyzePrimary_analysisFailure_degradesToUnavailable()
+            throws Exception {
+        // Gap test (NUT-11): Contract §5 — "any other analysis failure
+        // degrades that product's analysis to UNAVAILABLE". The
+        // production seams are defensive by construction (the parser,
+        // the cohort builder, and the analyzer all refuse to throw),
+        // so a seed list whose first iteration throws stands in for an
+        // analysis-stage failure and pins the service's catch: the
+        // result is a stored UNAVAILABLE analysis, the caller's seeds
+        // are handed back in the result, and no page is fetched. (The
+        // list iterates normally afterwards so the fallback's own
+        // defensive copy of the seeds can succeed.)
+        NutritionConfig config = config(3, 2);
+        ProductResult primary = midPrimary(config);
+        final List<CohortPeer> backing = NutritionCohortService
+                .seedPeersFromCandidates(Collections.singletonList(
+                        fullFood(1L, "Peer One", 300.0)), config);
+        List<CohortPeer> failOnceSeeds = new AbstractList<CohortPeer>() {
+            private boolean armed = true;
+
+            @Override
+            public CohortPeer get(int index) {
+                return backing.get(index);
+            }
+
+            @Override
+            public int size() {
+                return backing.size();
+            }
+
+            @Override
+            public Iterator<CohortPeer> iterator() {
+                if (armed) {
+                    armed = false;
+                    throw new IllegalStateException(
+                            "simulated analysis failure");
+                }
+                return backing.iterator();
+            }
+        };
+        FakePageSource source = new FakePageSource();
+
+        NutritionCohortService service = new NutritionCohortService(config, source);
+        NutritionCohortService.CohortResult result =
+                service.analyzePrimaryWithCohort(primary, failOnceSeeds, CATEGORY);
+
+        assertEquals(NutritionStatus.UNAVAILABLE, result.analysis.status);
+        assertSame(result.analysis, primary.nutritionAnalysis);
+        assertEquals(backing, result.peers);
+        assertTrue(source.requestedPages.isEmpty());
     }
 
     @Test

@@ -934,7 +934,15 @@ public class AlternatesCardController {
             row.addView(scoresView);
 
             // Up to two deterministic reasons from AlternativeExplainer.
+            // The explainer caps its output at two primary reasons
+            // (Contract §6); the cap is restated here defensively so a
+            // future producer change cannot flood the row (NUT-11).
+            int reasonsShown = 0;
             for (String reason : item.reasons) {
+                if (reasonsShown >= 2) {
+                    break;
+                }
+                reasonsShown++;
                 TextView reasonView = new TextView(ctx);
                 reasonView.setText(reason);
                 reasonView.setTextSize(12f);
@@ -1197,11 +1205,13 @@ public class AlternatesCardController {
      * each delta, the nutrient label with its improvement badge, then
      * two labeled bar lines — exactly "Your item" and
      * "This alternative" — with the per-100 value beside each bar and
-     * fills from the delta's favorable percentiles. When a delta has no
-     * favorable percentile on either side, the bar pair is hidden (the
-     * delta's contract) and only the labeled values show. No
-     * number-and-arrow strings anywhere: differences are carried by
-     * the badge and the bars, never by an arrow glyph.
+     * fills from the delta's favorable percentiles. Bar hiding is
+     * per side (NUT-11 wording resolution): a side whose favorable
+     * percentile is null loses only its own bar — its label and value
+     * still show, and so does the other side's bar; when both sides
+     * are null, only the labeled values show. No number-and-arrow
+     * strings anywhere: differences are carried by the badge and the
+     * bars, never by an arrow glyph.
      */
     private LinearLayout buildNutrientComparison(Context ctx,
                                                  List<NutrientDelta> deltas) {

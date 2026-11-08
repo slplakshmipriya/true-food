@@ -66,6 +66,32 @@ public class OverallScoreCalculatorTest {
     }
 
     @Test
+    public void blend_nullConfig_returnsIngredientScore() {
+        // Pinned (NUT-11): with no config there are no blend weights,
+        // so the ingredient score passes through unchanged — the same
+        // posture as a null nutrition score.
+        assertEquals(73, OverallScoreCalculator.blend(73, 50, null));
+        assertEquals(73, OverallScoreCalculator.blend(73, null, null));
+        assertEquals(CleanScoreCalculator.UNAVAILABLE,
+                OverallScoreCalculator.blend(
+                        CleanScoreCalculator.UNAVAILABLE, 50, null));
+    }
+
+    @Test
+    public void blend_floorMatchesCleanScoreCalculatorFloor() {
+        // MIN_SCORE cross-check (NUT-11): OverallScoreCalculator
+        // restates CleanScoreCalculator's package-private MIN_SCORE.
+        // Drive the real calculator to its own floor and require the
+        // blend floor to agree, so the restated constant cannot drift.
+        int ingredientFloor = CleanScoreCalculator.score(true, 100, 100);
+        assertEquals(5, ingredientFloor);
+        assertEquals(ingredientFloor,
+                OverallScoreCalculator.blend(6, 0, defaultConfig()));
+        assertEquals(ingredientFloor, OverallScoreCalculator.blend(
+                ingredientFloor, 0, defaultConfig()));
+    }
+
+    @Test
     public void blend_customWeights_changeResult() {
         // 50/50: round(0.5*80 + 0.5*50) = 65.
         assertEquals(65, OverallScoreCalculator.blend(

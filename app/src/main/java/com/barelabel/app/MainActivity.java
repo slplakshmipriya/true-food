@@ -1281,7 +1281,7 @@ private void refreshRecents() {
         if (explanationText != null) explanationText.setVisibility(View.GONE);
         if (buyButton != null) buyButton.setVisibility(View.GONE);
         if (shareVerdictButton != null) shareVerdictButton.setVisibility(View.GONE);
-        bindVerdictChips(null);
+        clearVerdictChips();
         alternatesController.hide();
         return;
     }
@@ -1356,7 +1356,7 @@ private void refreshRecents() {
         if (explanationText != null) explanationText.setVisibility(View.GONE);
         if (buyButton != null) buyButton.setVisibility(View.GONE);
         if (shareVerdictButton != null) shareVerdictButton.setVisibility(View.GONE);
-        bindVerdictChips(null);
+        clearVerdictChips();
         alternatesController.hide();
         return;
     }
@@ -1771,38 +1771,19 @@ private String normalizeForMatch(String s) {
  * Per-category pass/fail chips under the verdict: green "✓ No X" for enabled
  * categories with no flagged match, red "⚠ X" for the ones that fired.
  */
-private void bindVerdictChips(ProductResult result) {
+/**
+ * Clears and hides the legacy verdict-chips container. The NUT-08
+ * verdict card (bubbles + detail panels) replaced the category chips,
+ * so the container is never populated anymore; the predecessor
+ * bindVerdictChips(ProductResult) was only ever called with null
+ * after that rework, and its chip-building branch was removed in
+ * NUT-11 as provably dead (private method, two call sites, both
+ * passing the null literal).
+ */
+private void clearVerdictChips() {
     if (verdictChipsContainer == null) return;
     verdictChipsContainer.removeAllViews();
-    if (result == null || !result.found || TextUtils.isEmpty(result.ingredients.trim())) {
-        verdictChipsContainer.setVisibility(View.GONE);
-        return;
-    }
-    Set<String> failed = new HashSet<>();
-    if (result.matchResult != null && result.matchResult.categoryMap != null) {
-        failed.addAll(result.matchResult.categoryMap.keySet());
-    }
-    boolean any = false;
-    for (String category : getFlaggedCategories()) {
-        if (!CategoryPreferenceManager.isCategoryEnabled(this, category)) continue;
-        any = true;
-        boolean isFailed = failed.contains(category);
-        TextView chip = new TextView(this);
-        chip.setText(isFailed ? "⚠ " + category
-                : "✓ No " + category.toLowerCase(Locale.US));
-        chip.setTextSize(12f);
-        chip.setTextColor(isFailed ? C_RED_800 : C_GREEN_800);
-        chip.setBackgroundResource(isFailed ? R.drawable.chip_dirty_background
-                : R.drawable.chip_clean_background);
-        int hPad = dp(10), vPad = dp(5);
-        chip.setPadding(hPad, vPad, hPad, vPad);
-        FlexboxLayout.LayoutParams params = new FlexboxLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        params.setMargins(0, 0, dp(6), dp(6));
-        chip.setLayoutParams(params);
-        verdictChipsContainer.addView(chip);
-    }
-    verdictChipsContainer.setVisibility(any ? View.VISIBLE : View.GONE);
+    verdictChipsContainer.setVisibility(View.GONE);
 }
 
 /** Shows/hides the pulsing skeleton card displayed while a search runs. */

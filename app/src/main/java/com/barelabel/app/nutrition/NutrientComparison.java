@@ -7,7 +7,13 @@ package com.barelabel.app.nutrition;
  * <p>Nullability: {@link #per100} / {@link #perServing} are null when
  * the product did not report the nutrient (missing is never zero).
  * {@link #peerMedian} is present whenever the peer distribution is
- * non-empty. {@link #rawPercentile} / {@link #favorablePercentile} are
+ * non-empty. (Deliberate deviation from the Contract §4 API sketch,
+ * which shows peerMedian null when peerCount &lt; minPeers: the
+ * median is a descriptive statistic of the peers actually present and
+ * the panel shows it alongside the amount, while percentiles,
+ * quality, and flags still require minPeers — pinned by
+ * NutritionAnalyzerTest.medianExposedBelowMinPeers_percentilesNull.)
+ * {@link #rawPercentile} / {@link #favorablePercentile} are
  * the DISPLAY percentiles — rounded per Contract §4.1 when the peer
  * count is below the preferred count — and are null when the peer
  * count is below {@code minPeers} (or the nutrient was not reported).
