@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>strawberry (recall OR outbreak OR contamination OR salmonella OR listeria OR "e. coli" OR hepatitis) - Google News</title>
+    <link>https://news.google.com/rss/search?q=strawberry+recall&amp;hl=en-US&amp;gl=US&amp;ceid=US:en</link>
+    <description>Google News search results for strawberry safety reports (synthesized fixture, reference date 2026-11-08).</description>
+    <language>en-US</language>
+    <lastBuildDate>Sun, 08 Nov 2026 09:00:00 GMT</lastBuildDate>
+    <item>
+      <title>FDA investigating hepatitis A outbreak linked to fresh strawberries</title>
+      <link>https://www.foodsafetynews.com/2026/11/fda-investigating-hepatitis-a-outbreak-linked-to-fresh-strawberries/</link>
+      <guid isPermaLink="false">rss-strawberry-fixture-i1</guid>
+      <pubDate>Fri, 06 Nov 2026 14:30:00 GMT</pubDate>
+      <description>Federal officials are investigating a hepatitis A outbreak linked to fresh strawberries distributed in several states.</description>
+      <source url="https://www.foodsafetynews.com">Food Safety News</source>
+    </item>
+    <item>
+      <title>FDA investigating hepatitis A outbreak linked to strawberries, officials say</title>
+      <link>https://www.nbcnews.com/health/health-news/fda-investigating-hepatitis-outbreak-strawberries-officials-say</link>
+      <guid isPermaLink="false">rss-strawberry-fixture-i2</guid>
+      <pubDate>Sat, 07 Nov 2026 08:15:00 GMT</pubDate>
+      <description>Officials say the FDA is investigating a hepatitis A outbreak linked to strawberries, with additional details expected this week.</description>
+      <source url="https://www.nbcnews.com">NBC News</source>
+    </item>
+    <item>
+      <title>Strawberry prices rise as California harvest begins</title>
+      <link>https://www.freshproducejournal.example/2026/11/strawberry-prices-rise-california-harvest</link>
+      <guid isPermaLink="false">rss-strawberry-fixture-i3</guid>
+      <pubDate>Thu, 05 Nov 2026 11:00:00 GMT</pubDate>
+      <description>Strawberry prices rose this week as the California harvest got under way and demand strengthened.</description>
+      <source url="https://www.freshproducejournal.example">Fresh Produce Journal</source>
+    </item>
+    <item>
+      <title>Salmonella outbreak linked to cucumbers sickens dozens</title>
+      <link>https://www.foodsafetynews.com/2026/11/salmonella-outbreak-linked-to-cucumbers-sickens-dozens/</link>
+      <guid isPermaLink="false">rss-strawberry-fixture-i4</guid>
+      <pubDate>Fri, 06 Nov 2026 16:45:00 GMT</pubDate>
+      <description>A Salmonella outbreak linked to cucumbers has sickened dozens of people in multiple states, officials said.</description>
+      <source url="https://www.foodsafetynews.com">Food Safety News</source>
+    </item>
+    <item>
+      <title>Strawberry recall expands to additional states</title>
+      <link>https://www.foodsafetynews.com/2026/09/strawberry-recall-expands-to-additional-states/</link>
+      <guid isPermaLink="false">rss-strawberry-fixture-i5</guid>
+      <pubDate>Thu, 24 Sep 2026 10:20:00 GMT</pubDate>
+      <description>A strawberry recall has expanded to additional states, according to an update posted by regulators.</description>
+      <source url="https://www.foodsafetynews.com">Food Safety News</source>
+    </item>
+  </channel>
+</rss>
