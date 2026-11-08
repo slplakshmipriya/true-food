@@ -82,6 +82,7 @@ import com.barelabel.app.search.IngredientSectionExtractor;
 import com.barelabel.app.search.OcrCorrector;
 import com.barelabel.app.ui.AlternatesCardController;
 import com.barelabel.app.ui.CompareViewBuilder;
+import com.barelabel.app.ui.NutritionPanelController;
 import com.barelabel.app.ui.ProductDetailDialog;
 import com.barelabel.app.util.CategorySearchDecider;
 import com.barelabel.app.util.GenericWords;
@@ -97,6 +98,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int C_GRAY_600 = android.graphics.Color.parseColor("#4B5563");
     private static final int C_RED_900 = android.graphics.Color.parseColor("#7F1D1D");
     private static final int C_RED_800 = android.graphics.Color.parseColor("#991B1B");
+    private static final int C_AMBER_800 = android.graphics.Color.parseColor("#92400E");
 
     // Member Variable Declarations
     private EditText searchBox;
@@ -143,8 +145,18 @@ public class MainActivity extends AppCompatActivity {
     private boolean syncingCompareUi;
     private TextView stickyResultsText;
 
-    // Verdict pass/fail chips on the primary product card
+    // Verdict pass/fail chips on the primary product card (no longer
+    // rendered for found products — the verdict bubbles replace them,
+    // Contract §7.1; the container is only ever cleared and hidden now)
     private FlexboxLayout verdictChipsContainer;
+
+    // Verdict card fixed top block + bubbles + detail slot (Contract §7.1)
+    private LinearLayout scoreStrip;
+    private TextView ingredientScoreText, nutritionScoreText;
+    private LinearLayout verdictBubblesRow;
+    private Button ingredientsVerdictBubble, nutritionVerdictBubble;
+    private LinearLayout ingredientDetailPanel, nutritionDetailPanel;
+    private NutritionPanelController nutritionPanelController;
 
     // Cached flagged-category names from flagged_ingredients.json
     private List<String> flaggedCategoriesCache = null;
@@ -224,6 +236,7 @@ protected void onCreate(Bundle savedInstanceState) {
 
     // 1. Bind UI Components
     bindViews();
+    setupVerdictBubbleToggles();
 
     // 2. Load Superior Terms Engine Set
     loadSuperiorTerms();
@@ -528,6 +541,197 @@ private void refreshRecents() {
         stickyResultsText = findViewById(R.id.stickyResultsText);
         verdictChipsContainer = findViewById(R.id.verdictChipsContainer);
         verdictCompareBox = findViewById(R.id.verdictCompareBox);
+        scoreStrip = findViewById(R.id.scoreStrip);
+        ingredientScoreText = findViewById(R.id.ingredientScoreText);
+        nutritionScoreText = findViewById(R.id.nutritionScoreText);
+        verdictBubblesRow = findViewById(R.id.verdictBubblesRow);
+        ingredientsVerdictBubble = findViewById(R.id.ingredientsVerdictBubble);
+        nutritionVerdictBubble = findViewById(R.id.nutritionVerdictBubble);
+        ingredientDetailPanel = findViewById(R.id.ingredientDetailPanel);
+        nutritionDetailPanel = findViewById(R.id.nutritionDetailPanel);
+        nutritionPanelController = new NutritionPanelController(this);
+    }
+
+    /** Bubble click wiring: each bubble toggles only its own detail panel. */
+    private void setupVerdictBubbleToggles() {
+        if (ingredientsVerdictBubble != null) {
+            ingredientsVerdictBubble.setOnClickListener(
+                    v -> toggleVerdictPanel(true));
+        }
+        if (nutritionVerdictBubble != null) {
+            nutritionVerdictBubble.setOnClickListener(
+                    v -> toggleVerdictPanel(false));
+        }
+    }
+
+    /**
+     * Accordion for the detail slot (Contract §7.1): exactly one panel
+     * visible at a time, tapping the open panel's bubble closes it.
+     * Only the detail slot and the bubbles' expanded/collapsed content
+     * descriptions change here — the fixed top block (header, LLM
+     * summary, score ring, score strip) is never rebound or moved.
+     */
+    private void toggleVerdictPanel(boolean ingredients) {
+        if (ingredientDetailPanel == null || nutritionDetailPanel == null) {
+            return;
+        }
+        View target = ingredients ? ingredientDetailPanel
+                : nutritionDetailPanel;
+        boolean expand = target.getVisibility() != View.VISIBLE;
+        ingredientDetailPanel.setVisibility(
+                ingredients && expand ? View.VISIBLE : View.GONE);
+        nutritionDetailPanel.setVisibility(
+                !ingredients && expand ? View.VISIBLE : View.GONE);
+        updateBubbleContentDescriptions();
+    }
+
+    /** Bubbles expose their expanded/collapsed state (Contract §7.3). */
+    private void updateBubbleContentDescriptions() {
+        if (ingredientsVerdictBubble != null) {
+            boolean open = ingredientDetailPanel != null
+                    && ingredientDetailPanel.getVisibility() == View.VISIBLE;
+            ingredientsVerdictBubble.setContentDescription(open
+                    ? "Ingredients verdict, expanded"
+                    : "Ingredients verdict, collapsed");
+        }
+        if (nutritionVerdictBubble != null) {
+            boolean open = nutritionDetailPanel != null
+                    && nutritionDetailPanel.getVisibility() == View.VISIBLE;
+            nutritionVerdictBubble.setContentDescription(open
+                    ? "Nutrition verdict, expanded"
+                    : "Nutrition verdict, collapsed");
+        }
+    }
+
+    /**
+     * Resets the verdict card's detail slot for a new search/result:
+     * both panels closed, the nutrition panel cleared (which also
+     * collapses the remaining-nutrients toggle), bubbles collapsed.
+     */
+    private void resetVerdictPanels() {
+        if (ingredientDetailPanel != null) {
+            ingredientDetailPanel.setVisibility(View.GONE);
+        }
+        if (nutritionDetailPanel != null) {
+            nutritionDetailPanel.setVisibility(View.GONE);
+        }
+        if (nutritionPanelController != null) {
+            nutritionPanelController.reset(nutritionDetailPanel);
+        }
+        updateBubbleContentDescriptions();
+    }
+
+    /**
+     * Binds the fixed top block ONCE per result (Contract §7.1): the
+     * score ring becomes the Overall Score (ingredient score blended
+     * with the Nutrition Score per the config; ingredient score alone
+     * when nutrition is unavailable) and the strip shows the two
+     * component scores. No blend weights are displayed anywhere.
+     * Disambiguation rows and share text keep the ingredient score —
+     * only this ring changes meaning.
+     */
+    private void bindVerdictTopBlock(ProductResult result,
+                                     int ingredientScore) {
+        NutritionAnalysis analysis = result != null
+                ? result.nutritionAnalysis : null;
+        NutritionConfig config = NutritionConfigLoader.load(this);
+        Integer nutritionScore = analysis != null
+                ? analysis.nutritionScore : null;
+        int overallScore = OverallScoreCalculator.blend(
+                ingredientScore, nutritionScore, config);
+        if (cleanScoreView != null) {
+            cleanScoreView.setScore(overallScore);
+            cleanScoreView.setContentDescription("Overall Score");
+        }
+        if (ingredientScoreText != null) {
+            ingredientScoreText.setText(
+                    ingredientScore == CleanScoreCalculator.UNAVAILABLE
+                            ? "—" : String.valueOf(ingredientScore));
+        }
+        if (nutritionScoreText != null) {
+            nutritionScoreText.setText(nutritionScore == null
+                    ? "—" : String.valueOf(nutritionScore));
+        }
+        if (scoreStrip != null) {
+            scoreStrip.setVisibility(View.VISIBLE);
+        }
+    }
+
+    /**
+     * Binds the verdict bubbles and the nutrition detail panel for a
+     * found product (Contract §7.1): bubbles replace the large
+     * verdictText and the per-category chips, show the ACTUAL verdicts
+     * with per-verdict colors set here at bind time, and start with
+     * both detail panels closed.
+     */
+    private void bindVerdictBubblesAndPanels(ProductResult result,
+                                             boolean isClean) {
+        if (verdictText != null) {
+            verdictText.setVisibility(View.GONE);
+        }
+        if (verdictChipsContainer != null) {
+            verdictChipsContainer.removeAllViews();
+            verdictChipsContainer.setVisibility(View.GONE);
+        }
+        if (verdictBubblesRow != null) {
+            verdictBubblesRow.setVisibility(View.VISIBLE);
+        }
+        if (ingredientsVerdictBubble != null) {
+            ingredientsVerdictBubble.setText(
+                    isClean ? "Ingredients · CLEAN" : "Ingredients · DIRTY");
+            ingredientsVerdictBubble.setBackgroundResource(isClean
+                    ? R.drawable.chip_clean_background
+                    : R.drawable.chip_dirty_background);
+            ingredientsVerdictBubble.setTextColor(
+                    isClean ? C_GREEN_800 : C_RED_800);
+        }
+        NutritionAnalysis analysis = result != null
+                ? result.nutritionAnalysis : null;
+        com.barelabel.app.nutrition.NutritionStatus status =
+                analysis != null ? analysis.status : null;
+        if (nutritionVerdictBubble != null) {
+            if (status == com.barelabel.app.nutrition.NutritionStatus.SAFE) {
+                nutritionVerdictBubble.setText("Nutrition · SAFE");
+                nutritionVerdictBubble.setBackgroundResource(
+                        R.drawable.chip_clean_background);
+                nutritionVerdictBubble.setTextColor(C_GREEN_800);
+            } else if (status
+                    == com.barelabel.app.nutrition.NutritionStatus.CONCERNING) {
+                nutritionVerdictBubble.setText("Nutrition · CONCERNING");
+                nutritionVerdictBubble.setBackgroundResource(
+                        R.drawable.chip_concern_background);
+                nutritionVerdictBubble.setTextColor(C_AMBER_800);
+            } else {
+                nutritionVerdictBubble.setText("Nutrition · Unavailable");
+                nutritionVerdictBubble.setBackgroundResource(
+                        R.drawable.chip_unavailable_background);
+                nutritionVerdictBubble.setTextColor(C_GRAY_600);
+            }
+        }
+        if (nutritionPanelController != null) {
+            nutritionPanelController.bind(nutritionDetailPanel, analysis,
+                    result != null ? result.nutritionProfile : null,
+                    NutritionConfigLoader.load(this));
+        }
+        updateBubbleContentDescriptions();
+    }
+
+    /**
+     * States that keep the large verdictText (Contract §7.1): not-found
+     * and ingredients-unavailable hide the bubbles, the score strip,
+     * and the chips, and close the detail panels.
+     */
+    private void showVerdictTextState() {
+        if (verdictText != null) {
+            verdictText.setVisibility(View.VISIBLE);
+        }
+        if (verdictBubblesRow != null) {
+            verdictBubblesRow.setVisibility(View.GONE);
+        }
+        if (scoreStrip != null) {
+            scoreStrip.setVisibility(View.GONE);
+        }
+        resetVerdictPanels();
     }
 
     private void loadSuperiorTerms() {
@@ -655,6 +859,7 @@ private void refreshRecents() {
         progress.setVisibility(ProgressBar.VISIBLE);
         searchButton.setEnabled(false);
         resultCard.setVisibility(LinearLayout.GONE);
+        resetVerdictPanels();
         if (disambiguationCard != null) disambiguationCard.setVisibility(View.GONE);
         alternatesController.resetToggle();
         statusText.setText("Searching USDA FoodData Central…");
@@ -1001,6 +1206,7 @@ private void refreshRecents() {
                             boolean fetchedById, boolean saveToHistory) {
         currentPrimaryResult = result;
         clearComparePicks();
+        resetVerdictPanels();
         if (disambiguationCard != null) disambiguationCard.setVisibility(View.GONE);
         if (statusText != null) statusText.setVisibility(View.GONE);
         setSkeletonVisible(false);
@@ -1057,6 +1263,7 @@ private void refreshRecents() {
         if (productTitleText != null) productTitleText.setText("No Matching Product");
         if (productImageView != null) productImageView.setVisibility(View.GONE);
         resultCard.setBackgroundResource(R.drawable.verdict_dirty);
+        showVerdictTextState();
         verdictText.setText("? PRODUCT NOT FOUND");
         verdictText.setTextColor(colorMuted);
         if (flaggedTitle != null) flaggedTitle.setVisibility(View.GONE);
@@ -1131,6 +1338,7 @@ private void refreshRecents() {
             cleanScoreView.setScore(CleanScoreCalculator.UNAVAILABLE);
         }
         resultCard.setBackgroundResource(R.drawable.verdict_dirty);
+        showVerdictTextState();
         verdictText.setText("? INGREDIENTS UNAVAILABLE");
         verdictText.setTextColor(colorMuted);
         if (flaggedTitle != null) flaggedTitle.setVisibility(View.GONE);
@@ -1151,9 +1359,9 @@ private void refreshRecents() {
             && result.matchResult.categoryMap != null)
             ? result.matchResult.categoryMap.size() : 0;
     int cleanScore = CleanScoreCalculator.score(true, flaggedCount, categoryCount);
-    if (cleanScoreView != null) {
-        cleanScoreView.setScore(cleanScore);
-    }
+    // Fixed top block (Contract §7.1): the ring is now the Overall
+    // Score and the strip shows both component scores, bound once here.
+    bindVerdictTopBlock(result, cleanScore);
 
     // Persist this scan to history (deduplicated, newest-first), unless the
     // caller opted out (OCR label scans are transient reads, not products).
@@ -1200,16 +1408,27 @@ private void refreshRecents() {
     boolean premium = PremiumGates.isOcrScanEnabled(this);
     if (isClean) {
         resultCard.setBackgroundResource(R.drawable.verdict_clean);
-        verdictText.setText("✓ CLEAN INGREDIENTS");
-        verdictText.setTextColor(colorClean);
-        if (flaggedTitle != null) flaggedTitle.setVisibility(View.GONE);
-        if (flaggedText != null) flaggedText.setVisibility(View.GONE);
+        // Ingredients detail panel (below the bubbles) shows the
+        // no-flagged message for a CLEAN product (Contract §7.1).
+        if (flaggedTitle != null) {
+            ((TextView) flaggedTitle).setText("Ingredient check");
+            ((TextView) flaggedTitle).setTextColor(colorClean);
+            flaggedTitle.setVisibility(View.VISIBLE);
+        }
+        if (flaggedText != null) {
+            flaggedText.setText("No flagged ingredients. Every ingredient"
+                    + " passed the filters you selected.");
+            flaggedText.setTextColor(colorMuted);
+            flaggedText.setVisibility(View.VISIBLE);
+        }
         bindFlaggedList(null, !premium);
     } else {
         resultCard.setBackgroundResource(R.drawable.verdict_dirty);
-        verdictText.setText("⚠ DIRTY INGREDIENTS");
-        verdictText.setTextColor(colorDirty);
-        if (flaggedTitle != null) flaggedTitle.setVisibility(View.VISIBLE);
+        if (flaggedTitle != null) {
+            ((TextView) flaggedTitle).setText("Flagged Ingredients");
+            ((TextView) flaggedTitle).setTextColor(colorDirty);
+            flaggedTitle.setVisibility(View.VISIBLE);
+        }
         if (flaggedText != null) flaggedText.setVisibility(View.GONE);
 
         // Expandable per-ingredient rows with plain-English reasons
@@ -1218,8 +1437,10 @@ private void refreshRecents() {
     }
     bindVerdictExplanation(result, isClean, cleanScore, premium);
 
-    // 3. Verdict chips: per-category pass/fail so the verdict shows its work.
-    bindVerdictChips(result);
+    // 3. Verdict bubbles + nutrition panel (Contract §7.1): these
+    //    replace the large verdictText and the per-category verdict
+    //    chips for found products — the chips are no longer rendered.
+    bindVerdictBubblesAndPanels(result, isClean);
 
     // 4. Clean Alternates Section
     alternatesController.show(foodType, categoryIntent, isClean, flaggedCategories,

@@ -126,6 +126,9 @@ MARKERS = [
     ("verdictBubblesRow", "verdict card bubbles row layout id (Contract 7.1, NUT-08)"),
     ("ingredientDetailPanel", "verdict card ingredient detail panel layout id (Contract 7.1, NUT-08)"),
     ("nutritionDetailPanel", "verdict card nutrition detail panel layout id (Contract 7.1, NUT-08)"),
+    ("nutritionOutstandingContainer", "nutrition panel outstanding container layout id (Contract 7.1, NUT-08)"),
+    ("toggleRemainingNutrients", "nutrition panel remaining-nutrients toggle layout id (Contract 7.1, NUT-08)"),
+    ("nutritionRemainingContainer", "nutrition panel remaining container layout id (Contract 7.1, NUT-08)"),
 ]
 
 # Strings that would mean blend weights are rendered in a layout (Contract 9).
