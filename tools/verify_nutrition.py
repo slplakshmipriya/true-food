@@ -347,6 +347,88 @@ def _nutrient_value(food, nutrient_id):
     return None
 
 
+def check_nut09_alternates_ui():
+    """(f) NUT-09 alternates UI markers (Contract 7.2) — HARD checks.
+
+    Unlike the section 9 markers above (report-only until NUT-11), these
+    are the acceptance markers for the NUT-09 ticket itself, so a miss
+    fails the run:
+      * AlternatesCardController carries the exact strings "Your item",
+        "This alternative", "Compare nutrients" and the empty-state
+        sentence "No clean and safe alternatives were found for this
+        item." (plus the category variant stem), wires candidate context
+        through setCandidateContext, and ranks via rankNutritionAware.
+      * MainActivity calls setCandidateContext before setPool.
+      * No arrow-string comparison remnants in the controller: no
+        string literal contains a unicode arrow or an ASCII " -> "
+        comparison arrow (Java lambdas use -> unspaced and outside
+        strings, and javadoc prose arrows are not UI strings, so
+        neither is flagged).
+      * Brace balance for AlternatesCardController.java (section (c)
+        only covers the nutrition package).
+    """
+    section("(f) NUT-09 alternates UI markers (Contract 7.2, hard)")
+    controller = (APP_SRC / "main" / "java" / "com" / "barelabel" / "app"
+                  / "ui" / "AlternatesCardController.java")
+    main_activity = (APP_SRC / "main" / "java" / "com" / "barelabel"
+                     / "app" / "MainActivity.java")
+    if not controller.exists():
+        failures.append("NUT-09: AlternatesCardController.java missing")
+        print("  FAIL  AlternatesCardController.java missing")
+        return
+    text = controller.read_text(encoding="utf-8", errors="replace")
+    required = [
+        "Your item",
+        "This alternative",
+        "Compare nutrients",
+        "No clean and safe alternatives were found for this item.",
+        "No clean and safe alternatives were found in ",
+        "setCandidateContext",
+        "rankNutritionAware",
+    ]
+    for marker in required:
+        if marker in text:
+            print(f"  OK    controller contains {marker!r}")
+        else:
+            failures.append(f"NUT-09: controller missing {marker!r}")
+            print(f"  FAIL  controller missing {marker!r}")
+
+    import re
+    literals = re.findall(r'"(?:[^"\\]|\\.)*"', text)
+    arrows = ["\u2192", "\u279c", "\u2794", "\u27f6", " -> ", "-> ", " ->"]
+    arrow_hits = [lit for lit in literals
+                  if any(a in lit for a in arrows)]
+    if arrow_hits:
+        failures.append(
+            "NUT-09: arrow-string comparison in controller: "
+            + "; ".join(arrow_hits[:3]))
+        print(f"  FAIL  arrow-string comparison(s) in controller: {arrow_hits[:3]}")
+    else:
+        print("  OK    no arrow-string comparison remnants in controller")
+
+    cleaned = _strip_java_noise(text)
+    opens, closes = cleaned.count("{"), cleaned.count("}")
+    if opens == closes:
+        print(f"  OK    controller brace balance: {{ = {opens}, }} = {closes}")
+    else:
+        failures.append(
+            f"NUT-09: controller brace imbalance: {{={opens} }}={closes}")
+        print(f"  FAIL  controller brace imbalance: {{ = {opens}, }} = {closes}")
+
+    if main_activity.exists():
+        main_text = main_activity.read_text(encoding="utf-8", errors="replace")
+        ctx_idx = main_text.find("alternatesController.setCandidateContext(")
+        pool_idx = main_text.find("alternatesController.setPool(")
+        if ctx_idx >= 0 and pool_idx >= 0 and ctx_idx < pool_idx:
+            print("  OK    MainActivity calls setCandidateContext before setPool")
+        else:
+            failures.append(
+                "NUT-09: MainActivity setCandidateContext call missing "
+                "or not before setPool")
+            print("  FAIL  MainActivity setCandidateContext call missing "
+                  "or not before setPool")
+
+
 def check_chips_fixture():
     section("(e) Chips fixture validation (NUT-00)")
     if not CHIPS_FIXTURE.exists():
@@ -423,6 +505,7 @@ def main():
     check_brace_balance()
     check_markers()
     check_config_if_present()
+    check_nut09_alternates_ui()
     check_chips_fixture()
     section("Summary")
     if failures:
