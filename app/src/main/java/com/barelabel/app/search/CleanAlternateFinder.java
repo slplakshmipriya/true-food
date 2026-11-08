@@ -59,11 +59,10 @@ public class CleanAlternateFinder {
             return result;
         }
 
-        // Clean alternates are normally fetched only for dirty products; a category
-        // (unbranded) search always wants clean choices, even if the top hit is clean.
-        if (!categoryIntent && primaryResult.flagged.isEmpty()) {
-            return result;
-        }
+        // Whether alternates are sourced at all is the caller's decision
+        // (NutritionCohortService.shouldSource, Contract §5 step 4): this
+        // finder no longer early-returns for clean primaries, so a clean
+        // but nutrition-CONCERNING primary can still be sourced.
 
         Set<String> seenProductKeys = new HashSet<>();
         String primaryKey = StringNormalizer.normalize(primaryResult.name)
