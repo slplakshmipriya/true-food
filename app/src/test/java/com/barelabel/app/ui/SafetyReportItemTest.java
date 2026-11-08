@@ -194,6 +194,93 @@ public class SafetyReportItemTest {
         assertFalse(item.reasonText.contains("\u2026"));
     }
 
+    // ------------------------------------------------------------------
+    // NA-07 (NA-06 MINOR 2): trim boundaries — exactly 220, 221,
+    // word-boundary cut, and idempotence on each
+    // ------------------------------------------------------------------
+
+    private static String repeatStr(String unit, int times) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < times; i++) {
+            sb.append(unit);
+        }
+        return sb.toString();
+    }
+
+    @Test
+    public void trim_exactly220Chars_isUnchangedNoEllipsis() {
+        String exact = repeat('a', 220);
+        assertEquals(exact, FdaRecallMatcher.trimTo220(exact));
+        SafetyReportItem item = SafetyReportItem.fromAlert(
+                fda("Firm", exact, "reason", "meta"));
+        assertEquals(exact, item.productText);
+        assertEquals(220, item.productText.length());
+        assertFalse(item.productText.contains("\u2026"));
+        // Idempotence.
+        assertEquals(item.productText,
+                FdaRecallMatcher.trimTo220(item.productText));
+    }
+
+    @Test
+    public void trim_221Chars_trimsTo220WithEllipsis() {
+        String over = repeat('a', 221);
+        String trimmed = FdaRecallMatcher.trimTo220(over);
+        assertEquals(220, trimmed.length());
+        assertTrue(trimmed.endsWith("\u2026"));
+        assertEquals(repeat('a', 219), trimmed.substring(0, 219));
+        SafetyReportItem item = SafetyReportItem.fromAlert(
+                fda("Firm", over, "reason", "meta"));
+        assertEquals(trimmed, item.productText);
+        // Idempotence.
+        assertEquals(trimmed, FdaRecallMatcher.trimTo220(trimmed));
+    }
+
+    @Test
+    public void trim_wordBoundaryCut_producesLessThan220() {
+        // 6-char words ("abcde "): the last space at or before the
+        // 219 limit sits at index 215, so the cut lands there and
+        // the result (215 + ellipsis) is shorter than 220.
+        String text = repeatStr("abcde ", 40);
+        String trimmed = FdaRecallMatcher.trimTo220(text);
+        assertTrue(trimmed.length() < 220);
+        assertEquals(216, trimmed.length());
+        assertTrue(trimmed.endsWith("\u2026"));
+        assertEquals(text.trim().substring(0, 215),
+                trimmed.substring(0, 215));
+        // Idempotence.
+        assertEquals(trimmed, FdaRecallMatcher.trimTo220(trimmed));
+        SafetyReportItem item = SafetyReportItem.fromAlert(
+                fda("Firm", text, "reason", "meta"));
+        assertEquals(trimmed, item.productText);
+        assertEquals(trimmed,
+                FdaRecallMatcher.trimTo220(item.productText));
+    }
+
+    // ------------------------------------------------------------------
+    // NA-07 (NA-06 MINOR 3): the body joiner is exactly " — "
+    // ------------------------------------------------------------------
+
+    @Test
+    public void bodyJoiner_isExactlySpaceEmDashSpace() {
+        SafetyReportItem item =
+                SafetyReportItem.fromAlert(sampleAlerts().get(0));
+        // Full equality pins the joiner byte-for-byte: product,
+        // space, em dash (U+2014), space, reason — nothing else.
+        assertEquals("Fresh whole strawberries, 1 lb clamshell"
+                + " \u2014 Potential hepatitis A contamination",
+                item.bodyText);
+    }
+
+    @Test
+    public void bodySinglePart_hasNoJoiner() {
+        SafetyReportItem productOnly = SafetyReportItem.fromAlert(
+                fda("Firm", "Only product", "", "meta"));
+        assertEquals("Only product", productOnly.bodyText);
+        SafetyReportItem reasonOnly = SafetyReportItem.fromAlert(
+                fda("Firm", "", "Only reason", "meta"));
+        assertEquals("Only reason", reasonOnly.bodyText);
+    }
+
     @Test
     public void alreadyTrimmedModelTextIsNotDoubleTrimmed() {
         // The matcher already trims FDA text to 220; re-applying the
