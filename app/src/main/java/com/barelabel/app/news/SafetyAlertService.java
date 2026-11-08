@@ -32,6 +32,21 @@ import java.util.concurrent.TimeUnit;
  * source still returns the other source's alerts, and a failure in
  * both yields an empty list, a count of 0, or a false badge.
  *
+ * <p>Product fetching (fix round 1): a search is fetched as one
+ * term (§2.1 variant behavior, frozen), but a PRODUCT is fetched
+ * PER TOKEN — each distinct folded content token of the section
+ * 3.1 set (product name tokens plus USDA category tokens) is sent
+ * to each client as a single token, taking the client's bare-token
+ * query path instead of a quoted phrase built from the raw product
+ * name, which realistic names match almost nothing against. The
+ * per-token results are merged and deduped (FDA by event_id +
+ * recall_number, first-wins, mirroring {@link OpenFdaClient};
+ * news by link, falling back to the normalized title), then
+ * matched ONCE against the full section 3.1 token set. Because the
+ * NA-03 clients key their section 5 response cache by the term
+ * they are called with, per-token calls also make the cache key
+ * cover the category tokens.
+ *
  * <p>Concurrency: each call runs the two source pipelines on a
  * per-call two-thread {@link ExecutorService} (the per-call pool
  * pattern already used elsewhere in the app) and waits with a
@@ -39,10 +54,15 @@ import java.util.concurrent.TimeUnit;
  * The bound covers the slowest source: the FDA client may issue up
  * to 3 sequential variant requests at the section 7 limit of 10 s
  * each (30 s worst case) while the news client needs one 10 s
- * request, and the sources run in parallel. The pool is always shut
- * down before the call returns, so no threads leak (important for
- * JVM unit tests). Only minSdk-23 APIs are used — no lambdas, no
- * streams, no java.time, no CompletableFuture.
+ * request, and the sources run in parallel. The single deadline is
+ * shared by every per-token call of a product fetch — no token
+ * gets a fresh bound. The pool is shut down before the call
+ * returns via {@code shutdownNow()} (without awaiting
+ * termination): no executor is left accepting work, and its
+ * threads are interrupted on a best-effort basis, so a task that
+ * ignores interrupts could in principle outlive the call briefly.
+ * Only minSdk-23 APIs are used — no lambdas, no streams, no
+ * java.time, no CompletableFuture.
  *
  * <p>Testability: the two clients sit behind the {@link FdaSource}
  * and {@link NewsSource} seams, so unit tests inject fakes and run
@@ -150,6 +170,89 @@ public final class SafetyAlertService {
         }
     }
 
+    /**
+     * Fetch tokens for a product card (fix round 1): the distinct
+     * FOLDED content tokens of the product name plus its USDA
+     * category, in first-seen order (name first, then category).
+     * Each of these is sent to each source as a SINGLE-token fetch
+     * term, so the folded form is the fetch spelling ("strawberry",
+     * not both "strawberries" and "strawberry").
+     *
+     * <p>Exclusions (documented set): any token containing a digit
+     * (pure sizes such as "16", and fused sizes such as "16oz" or
+     * "500g") and the unit tokens in
+     * {@link #EXCLUDED_FETCH_TOKENS} ("oz", "lb", "g", "kg", "ml",
+     * ...) are package-size noise, never food terms, and are not
+     * fetched. They stay in the section 3.1 MATCH token set built
+     * by {@link #queryTokensForProduct}; only fetching skips them.
+     */
+    public static List<String> fetchTokensForProduct(String productName,
+                                                     String usdaCategory) {
+        try {
+            List<String> out = new ArrayList<>();
+            Set<String> seen = new LinkedHashSet<>();
+            addFetchTokens(out, seen, productName);
+            addFetchTokens(out, seen, usdaCategory);
+            return Collections.unmodifiableList(out);
+        } catch (Throwable t) {
+            return Collections.emptyList();
+        }
+    }
+
+    private static void addFetchTokens(List<String> out, Set<String> seen,
+                                       String text) {
+        for (String rawToken : NewsText.tokens(text)) {
+            String folded = NewsText.foldToken(rawToken);
+            if (folded.isEmpty() || isExcludedFetchToken(folded)) {
+                continue;
+            }
+            if (seen.add(folded)) {
+                out.add(folded);
+            }
+        }
+    }
+
+    /** Unit tokens never fetched (see {@link #fetchTokensForProduct}). */
+    private static final Set<String> EXCLUDED_FETCH_TOKENS;
+
+    static {
+        Set<String> units = new LinkedHashSet<>();
+        units.add("oz");
+        units.add("lb");
+        units.add("lbs");
+        units.add("g");
+        units.add("kg");
+        units.add("mg");
+        units.add("mcg");
+        units.add("ml");
+        units.add("l");
+        units.add("liter");
+        units.add("litre");
+        units.add("gal");
+        units.add("gallon");
+        units.add("pt");
+        units.add("pint");
+        units.add("qt");
+        units.add("quart");
+        units.add("fl");
+        units.add("ct");
+        units.add("count");
+        units.add("pack");
+        units.add("pkg");
+        EXCLUDED_FETCH_TOKENS = Collections.unmodifiableSet(units);
+    }
+
+    private static boolean isExcludedFetchToken(String foldedToken) {
+        for (int i = 0; i < foldedToken.length(); i++) {
+            char c = foldedToken.charAt(i);
+            if (c >= '0' && c <= '9') {
+                // Pure or fused package size ("16", "16oz", "500g").
+                return true;
+            }
+        }
+        return EXCLUDED_FETCH_TOKENS.contains(foldedToken);
+    }
+
     // ------------------------------------------------------------------
     // Combined alerts (Contract section 4)
     // ------------------------------------------------------------------
@@ -191,9 +294,12 @@ public final class SafetyAlertService {
 
     /**
      * Combined alerts for a product: the token set is the product
-     * name tokens plus the USDA category tokens (section 3.1); the
-     * sources are fetched for the product name. Ordering and the
-     * never-throws boundary are as for {@link #alertsForSearch}.
+     * name tokens plus the USDA category tokens (section 3.1), and
+     * the sources are fetched PER FETCH TOKEN (see
+     * {@link #fetchTokensForProduct}) — never with the raw product
+     * name — then matched once against the full token set.
+     * Ordering and the never-throws boundary are as for
+     * {@link #alertsForSearch}.
      */
     public List<SafetyAlert> alertsForProduct(String productName,
                                               String usdaCategory,
@@ -205,7 +311,12 @@ public final class SafetyAlertService {
             if (tokens.isEmpty()) {
                 return Collections.emptyList();
             }
-            return fetchAndMatch(productName, tokens,
+            List<String> fetchTokens =
+                    fetchTokensForProduct(productName, usdaCategory);
+            if (fetchTokens.isEmpty()) {
+                return Collections.emptyList();
+            }
+            return fetchAndMatchPerToken(fetchTokens, tokens,
                     referenceDateYyyymmdd, referenceEpochMillis);
         } catch (Throwable t) {
             return Collections.emptyList();
@@ -337,25 +448,71 @@ public final class SafetyAlertService {
             final String fetchTerm, final Set<String> tokens,
             final int referenceDateYyyymmdd,
             final long referenceEpochMillis) {
+        final long deadline =
+                System.currentTimeMillis() + overallTimeoutMs;
+        return executePipelines(deadline,
+                new Callable<List<SafetyAlert>>() {
+                    @Override
+                    public List<SafetyAlert> call() {
+                        return fdaAlerts(fetchTerm, tokens,
+                                referenceDateYyyymmdd);
+                    }
+                },
+                new Callable<List<SafetyAlert>>() {
+                    @Override
+                    public List<SafetyAlert> call() {
+                        return newsAlerts(fetchTerm, tokens,
+                                referenceEpochMillis);
+                    }
+                });
+    }
+
+    /**
+     * Product variant of {@link #fetchAndMatch}: each source
+     * pipeline fetches per token (see the class javadoc) under the
+     * SAME single overall deadline computed here — the deadline is
+     * passed into both pipelines, which stop starting new token
+     * calls once it passes, and {@link #await} bounds the wait for
+     * each pipeline by that same deadline.
+     */
+    private List<SafetyAlert> fetchAndMatchPerToken(
+            final List<String> fetchTokens, final Set<String> tokens,
+            final int referenceDateYyyymmdd,
+            final long referenceEpochMillis) {
+        final long deadline =
+                System.currentTimeMillis() + overallTimeoutMs;
+        return executePipelines(deadline,
+                new Callable<List<SafetyAlert>>() {
+                    @Override
+                    public List<SafetyAlert> call() {
+                        return fdaAlertsPerToken(fetchTokens, tokens,
+                                referenceDateYyyymmdd, deadline);
+                    }
+                },
+                new Callable<List<SafetyAlert>>() {
+                    @Override
+                    public List<SafetyAlert> call() {
+                        return newsAlertsPerToken(fetchTokens, tokens,
+                                referenceEpochMillis, deadline);
+                    }
+                });
+    }
+
+    /**
+     * Runs the FDA and news pipelines concurrently and combines
+     * their results against one shared deadline: FDA alerts
+     * (matcher order) first, then news alerts (matcher order).
+     * Each pipeline is independently Throwable-proof; a pipeline
+     * that fails or misses the deadline contributes an empty block.
+     */
+    private List<SafetyAlert> executePipelines(
+            long deadline,
+            Callable<List<SafetyAlert>> fdaTask,
+            Callable<List<SafetyAlert>> newsTask) {
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
-            Future<List<SafetyAlert>> fdaFuture =
-                    pool.submit(new Callable<List<SafetyAlert>>() {
-                        @Override
-                        public List<SafetyAlert> call() {
-                            return fdaAlerts(fetchTerm, tokens,
-                                    referenceDateYyyymmdd);
-                        }
-                    });
-            Future<List<SafetyAlert>> newsFuture =
-                    pool.submit(new Callable<List<SafetyAlert>>() {
-                        @Override
-                        public List<SafetyAlert> call() {
-                            return newsAlerts(fetchTerm, tokens,
-                                    referenceEpochMillis);
-                        }
-                    });
-            long deadline = System.currentTimeMillis() + overallTimeoutMs;
+            Future<List<SafetyAlert>> fdaFuture = pool.submit(fdaTask);
+            Future<List<SafetyAlert>> newsFuture = pool.submit(newsTask);
             List<SafetyAlert> combined = new ArrayList<>();
             combined.addAll(await(fdaFuture, deadline));
             combined.addAll(await(newsFuture, deadline));
@@ -363,8 +520,9 @@ public final class SafetyAlertService {
         } catch (Throwable t) {
             return Collections.emptyList();
         } finally {
-            // Interrupt any straggler and release the threads: no
-            // executor outlives the call.
+            // Interrupt any straggler (shutdownNow, without awaiting
+            // termination): no executor outlives the call, though a
+            // task ignoring interrupts may finish asynchronously.
             pool.shutdownNow();
         }
     }
@@ -424,21 +582,146 @@ public final class SafetyAlertService {
                 return Collections.emptyList();
             }
             List<RawNewsItem> items = newsSource.fetchNews(fetchTerm);
-            List<NewsStory> stories =
-                    newsMatcher.match(items, tokens, referenceEpochMillis);
-            if (stories == null) {
-                return Collections.emptyList();
-            }
-            List<SafetyAlert> alerts = new ArrayList<>();
-            for (NewsStory story : stories) {
-                if (story != null) {
-                    alerts.add(toAlert(story));
-                }
-            }
-            return alerts;
+            return matchNews(items, tokens, referenceEpochMillis);
         } catch (Throwable t) {
             return Collections.emptyList();
         }
+    }
+
+    /**
+     * Product FDA pipeline (fix round 1): one single-token fetch
+     * per fetch token, in order, under the shared overall deadline
+     * (checked before each token call — a token call already in
+     * flight when the deadline passes is bounded by
+     * {@link #await}'s cancellation, as before).
+     *
+     * <p>Per-token failure rule (§7, decided here): a token call
+     * that throws contributes NOTHING for that token, but does not
+     * void the source — the remaining tokens are still fetched. If
+     * every token call fails the merged set is simply empty, which
+     * is exactly the total-source-failure outcome. The merged
+     * records are deduped by {@link OpenFdaClient#mergeDedupe}
+     * (event_id + recall_number, first-wins) and matched ONCE
+     * against the full section 3.1 token set.
+     */
+    private List<SafetyAlert> fdaAlertsPerToken(List<String> fetchTokens,
+                                                Set<String> tokens,
+                                                int referenceDateYyyymmdd,
+                                                long deadlineMillis) {
+        try {
+            if (fdaSource == null) {
+                return Collections.emptyList();
+            }
+            List<FdaRecord> merged = new ArrayList<>();
+            for (String fetchToken : fetchTokens) {
+                if (System.currentTimeMillis() >= deadlineMillis) {
+                    break;
+                }
+                try {
+                    List<FdaRecord> records =
+                            fdaSource.fetchRecalls(fetchToken);
+                    if (records != null) {
+                        merged.addAll(records);
+                    }
+                } catch (Throwable tokenFailure) {
+                    // Contributes nothing for this token; the source
+                    // and its other tokens are unaffected (§7).
+                }
+            }
+            List<SafetyAlert> alerts = FdaRecallMatcher.match(
+                    OpenFdaClient.mergeDedupe(merged), tokens,
+                    referenceDateYyyymmdd);
+            return alerts != null
+                    ? alerts : Collections.<SafetyAlert>emptyList();
+        } catch (Throwable t) {
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Product news pipeline (fix round 1): the same per-token
+     * fetching, deadline and failure rules as
+     * {@link #fdaAlertsPerToken}. The merged items are deduped by
+     * link, falling back to the normalized title when the link is
+     * null/empty (first occurrence wins), then matched ONCE
+     * against the full section 3.1 token set.
+     */
+    private List<SafetyAlert> newsAlertsPerToken(List<String> fetchTokens,
+                                                 Set<String> tokens,
+                                                 long referenceEpochMillis,
+                                                 long deadlineMillis) {
+        try {
+            if (newsSource == null) {
+                return Collections.emptyList();
+            }
+            List<RawNewsItem> merged = new ArrayList<>();
+            for (String fetchToken : fetchTokens) {
+                if (System.currentTimeMillis() >= deadlineMillis) {
+                    break;
+                }
+                try {
+                    List<RawNewsItem> items =
+                            newsSource.fetchNews(fetchToken);
+                    if (items != null) {
+                        merged.addAll(items);
+                    }
+                } catch (Throwable tokenFailure) {
+                    // Contributes nothing for this token; the source
+                    // and its other tokens are unaffected (§7).
+                }
+            }
+            return matchNews(dedupeNewsItems(merged), tokens,
+                    referenceEpochMillis);
+        } catch (Throwable t) {
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * News dedupe across per-token calls (fix round 1): by link,
+     * falling back to the normalized title when the link is
+     * null/empty; the first occurrence wins and order is preserved.
+     */
+    static List<RawNewsItem> dedupeNewsItems(List<RawNewsItem> items) {
+        List<RawNewsItem> out = new ArrayList<>();
+        if (items == null) {
+            return out;
+        }
+        Set<String> seen = new LinkedHashSet<>();
+        for (RawNewsItem item : items) {
+            if (item == null) {
+                continue;
+            }
+            String link = item.getLink();
+            String key;
+            if (link != null && !link.trim().isEmpty()) {
+                key = "link\u0001" + link.trim();
+            } else {
+                key = "title\u0001" + NewsText.normalize(item.getHeadline());
+            }
+            if (seen.add(key)) {
+                out.add(item);
+            }
+        }
+        return out;
+    }
+
+    /** Matches raw news items via NA-02 and adapts the stories. */
+    private List<SafetyAlert> matchNews(List<RawNewsItem> items,
+                                        Set<String> tokens,
+                                        long referenceEpochMillis) {
+        List<NewsStory> stories =
+                newsMatcher.match(items, tokens, referenceEpochMillis);
+        if (stories == null) {
+            return Collections.emptyList();
+        }
+        List<SafetyAlert> alerts = new ArrayList<>();
+        for (NewsStory story : stories) {
+            if (story != null) {
+                alerts.add(toAlert(story));
+            }
+        }
+        return alerts;
     }
 
     /** Adapts an NA-02 {@link NewsStory} to the section 1 model. */
