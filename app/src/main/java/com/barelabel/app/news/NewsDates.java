@@ -26,13 +26,41 @@ public final class NewsDates {
         return yyyymmdd % 100;
     }
 
+    /**
+     * Strict calendar validity (NA-07, NA-01 review M1): the day
+     * must exist in the month, with February's length following the
+     * Gregorian leap-year rule — so Feb 30, Apr 31 and Feb 29 of a
+     * non-leap year are all invalid, as are month 13 / day 0.
+     */
     public static boolean isValid(int yyyymmdd) {
         if (yyyymmdd <= 0) {
             return false;
         }
+        int year = yearOf(yyyymmdd);
         int month = monthOf(yyyymmdd);
         int day = dayOf(yyyymmdd);
-        return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+        if (year < 1 || month < 1 || month > 12 || day < 1) {
+            return false;
+        }
+        return day <= daysInMonth(year, month);
+    }
+
+    private static int daysInMonth(int year, int month) {
+        switch (month) {
+            case 2:
+                return isLeapYear(year) ? 29 : 28;
+            case 4:
+            case 6:
+            case 9:
+            case 11:
+                return 30;
+            default:
+                return 31;
+        }
+    }
+
+    private static boolean isLeapYear(int year) {
+        return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
     }
 
     /**
