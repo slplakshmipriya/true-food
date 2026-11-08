@@ -20,6 +20,17 @@ public class ProductResult {
     public String gtinUpc = "";
     public String brandName = "";
     public String brandOwner = "";
+    /** USDA FoodData Central ID of the source record; 0 when unknown. */
+    public long fdcId;
+    /**
+     * Parsed nutrition facts for this product (Contract §2), attached by
+     * the USDA parser at build time; null when no profile was attached
+     * (e.g. products built outside the USDA path).
+     */
+    public NutritionProfile nutritionProfile;
+    // Note: the NutritionAnalysis field from Contract §2 is added by
+    // NUT-04 together with its real type; it is deliberately not declared
+    // here yet.
     public MatchQuality matchQuality;
     public FlaggedIngredientManager.MatchResult matchResult;
     public Set<String> flagged = new HashSet<>();
