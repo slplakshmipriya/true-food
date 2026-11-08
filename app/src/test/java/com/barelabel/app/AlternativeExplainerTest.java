@@ -378,6 +378,17 @@ public class AlternativeExplainerTest {
     }
 
     @Test
+    public void deltas_badgeHigherBadWorse_fixtureSugars120PercentMore() {
+        // Headline fixture case: candidate 990001 total_sugars 0.5 g
+        // -> alt 990013 1.1 g is a (1.1 - 0.5) / 0.5 = 120% worsening
+        // (>= 10%), so the percent badge applies: "120% more", not
+        // the absolute "0.6 g more".
+        List<NutrientDelta> deltas = deltasFor(
+                comp("total_sugars", 0.5, 50.0), comp("total_sugars", 1.1, 40.0));
+        assertEquals("120% more", deltas.get(0).badge);
+    }
+
+    @Test
     public void deltas_badgeHigherGoodWorseIsAbsoluteMinus() {
         // Fiber 5.0 -> 3.8 g: "-1.2 g".
         List<NutrientDelta> deltas = deltasFor(

@@ -471,9 +471,11 @@ public class AlternateRanker {
      * positions. Deterministic: no randomness, no LLM.
      *
      * <p>Defensive fallbacks (outside the contract's normal flow): a
-     * null config delegates to the legacy {@link #rankAndFilter}; a
-     * profile key missing from the config uses equal component
-     * weights.
+     * null config applies the §6 eligibility defence first (only
+     * CLEAN ∧ SAFE alternates survive) and delegates only those to
+     * the legacy {@link #rankAndFilter}; a profile key missing from
+     * the config fails closed with an empty result — Contract §1.3
+     * forbids falling back to hard-coded defaults.
      */
     public static List<RankedProduct> rankNutritionAware(
             ProductResult candidate, NutritionAnalysis candidateAnalysis,
@@ -484,12 +486,33 @@ public class AlternateRanker {
             return out;
         }
         if (config == null) {
-            return rankAndFilter(eligible, superiorTerms, preferOrganic);
+            // Defence-first (Contract §6): never let the legacy path
+            // return an alternate that violates eligibility. Filter to
+            // CLEAN (no flagged items) ∧ SAFE (non-null analysis with
+            // status SAFE) before delegating; rankAndFilter itself is
+            // unchanged and additionally drops flagged items.
+            List<ProductResult> eligibleSafe = new ArrayList<>();
+            for (ProductResult alt : eligible) {
+                if (alt == null
+                        || (alt.flagged != null && !alt.flagged.isEmpty())) {
+                    continue;
+                }
+                if (alt.nutritionAnalysis == null
+                        || alt.nutritionAnalysis.status != NutritionStatus.SAFE) {
+                    continue;
+                }
+                eligibleSafe.add(alt);
+            }
+            return rankAndFilter(eligibleSafe, superiorTerms, preferOrganic);
         }
         RankingProfile profile = config.rankingProfiles.get(
                 profileFor(candidate, candidateAnalysis));
         if (profile == null) {
-            profile = new RankingProfile(0.25, 0.25, 0.25, 0.25);
+            // Fail closed (Contract §1.3): no hard-coded fallback
+            // weights. A missing profile means no ranking is possible.
+            // Production-unreachable: the config loader throws when
+            // any of the three profiles is missing.
+            return out;
         }
 
         List<NutritionScored> scored = new ArrayList<>();

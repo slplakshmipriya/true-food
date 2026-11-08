@@ -256,7 +256,12 @@ public final class AlternativeExplainer {
                 }
                 return formatAmount(candidateAmt - altAmt, def.unit) + " less";
             }
-            double pct = percentImprovement(def, candidateAmt, altAmt);
+            // Worsening branch: percentImprovement is signed (negative
+            // for a higher-bad worsening), so gate/round on its magnitude
+            // — the percent change — not the signed improvement. Do not
+            // change percentImprovement itself: focusedReason relies on
+            // its signed, improves-only semantics.
+            double pct = Math.abs(percentImprovement(def, candidateAmt, altAmt));
             if (candidateAmt > 0 && pct >= PERCENT_FORM_MIN) {
                 return Math.round(pct) + "% more";
             }

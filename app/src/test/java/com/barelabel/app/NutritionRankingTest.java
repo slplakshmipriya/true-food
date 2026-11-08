@@ -238,6 +238,62 @@ public class NutritionRankingTest {
         assertEquals("Good", out.get(0).product.name);
     }
 
+    @Test
+    public void rankNutritionAware_missingRankingProfile_returnsEmpty_failClosed() {
+        // Contract §1.3: never fall back to hard-coded defaults. A
+        // profile key missing from rankingProfiles must fail closed
+        // (no ranking possible -> empty), not substitute equal
+        // weights. dirtyCandidate + SAFE analysis selects "dirty_only",
+        // so removing that profile triggers the case.
+        NutritionConfig base = config();
+        Map<String, RankingProfile> profiles = new LinkedHashMap<>(
+                base.rankingProfiles);
+        profiles.remove("dirty_only");
+        NutritionConfig missingProfile = new NutritionConfig(base.version,
+                base.ingredientWeight, base.nutritionWeight, base.minPeers,
+                base.preferredPeers, base.maxCategoryPages,
+                base.roundBelowPreferredToNearest, base.minCoverage,
+                base.relativeWeight, base.absoluteWeight,
+                base.alternativesMaxPagesPerQuery, base.alternativesPoolCap,
+                base.byKey, profiles);
+        ProductResult good = eligibleAlt("Good", "X, Y", safe(50));
+        List<AlternateRanker.RankedProduct> out = AlternateRanker.rankNutritionAware(
+                dirtyCandidate(), dirtySafeAnalysis(),
+                Collections.singletonList(good), Collections.<String>emptySet(),
+                false, missingProfile);
+        assertTrue(out.isEmpty());
+    }
+
+    @Test
+    public void rankNutritionAware_nullConfig_neverReturnsConcerningOrUnavailable() {
+        // Contract §6 defensive-drop rule applies even on the null-config
+        // path: only CLEAN + SAFE alternates may survive; CONCERNING,
+        // UNAVAILABLE, null-analysis and flagged alternates are dropped
+        // before any legacy ranking.
+        ProductResult concerning = eligibleAlt("Concerning", "X, Y",
+                analysis(NutritionStatus.CONCERNING, 90, Arrays.asList("sodium")));
+        ProductResult unavailable = eligibleAlt("Unavailable", "X, Y",
+                analysis(NutritionStatus.UNAVAILABLE, null,
+                        Collections.<String>emptyList()));
+        ProductResult noAnalysis = product("NoAnalysis", "X, Y");
+        ProductResult flagged = product("Flagged", "X, Y", "soy lecithin");
+        flagged.nutritionAnalysis = safe(90);
+        ProductResult good = eligibleAlt("Good", "X, Y", safe(50));
+        List<AlternateRanker.RankedProduct> out = AlternateRanker.rankNutritionAware(
+                dirtyCandidate(), dirtySafeAnalysis(),
+                Arrays.asList(concerning, unavailable, noAnalysis, flagged, good),
+                Collections.<String>emptySet(), false, null);
+        assertEquals(1, out.size());
+        assertEquals("Good", out.get(0).product.name);
+
+        // With no eligible SAFE alternate at all, the result is empty.
+        List<AlternateRanker.RankedProduct> none = AlternateRanker.rankNutritionAware(
+                dirtyCandidate(), dirtySafeAnalysis(),
+                Arrays.asList(concerning, unavailable),
+                Collections.<String>emptySet(), false, null);
+        assertTrue(none.isEmpty());
+    }
+
     // ------------------------------------------------------------------
     // ingredientAdvantage
     // ------------------------------------------------------------------
@@ -742,10 +798,14 @@ public class NutritionRankingTest {
         // Deltas cover every differing displayed nutrient, config order.
         List<String> keys = new ArrayList<>();
         NutrientDelta sodium = null;
+        NutrientDelta totalSugars = null;
         for (NutrientDelta d : out.get(0).deltas) {
             keys.add(d.key);
             if ("sodium".equals(d.key)) {
                 sodium = d;
+            }
+            if ("total_sugars".equals(d.key)) {
+                totalSugars = d;
             }
         }
         assertEquals(Arrays.asList("energy", "protein", "total_fat",
@@ -755,5 +815,12 @@ public class NutritionRankingTest {
         assertEquals(920.0, sodium.candidatePer100, EPS);
         assertEquals(140.0, sodium.alternativePer100, EPS);
         assertEquals("85% less", sodium.badge);
+        // Fixture worsening: total_sugars 0.5 g (990001) -> 1.1 g
+        // (990013) is a 120% increase, so the badge is the percent
+        // form "120% more", not the absolute "0.6 g more".
+        assertNotNull(totalSugars);
+        assertEquals(0.5, totalSugars.candidatePer100, EPS);
+        assertEquals(1.1, totalSugars.alternativePer100, EPS);
+        assertEquals("120% more", totalSugars.badge);
     }
 }
