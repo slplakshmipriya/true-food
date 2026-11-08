@@ -9,7 +9,10 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.GregorianCalendar;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -122,6 +125,140 @@ public class SafetyAlertServiceTest {
         }
     }
 
+    /**
+     * Term-sensitive FDA fake for the product path (fix round 1):
+     * returns ONLY the records registered for the exact single-token
+     * term it is queried with, and an empty list for every other
+     * term. Unlike the canned fakes above, a service that passes a
+     * raw multi-token product name (or never queries a category
+     * token) retrieves nothing from this fake, so the product-path
+     * tests below can actually catch a discarded token set.
+     */
+    private static final class TermSensitiveFakeFdaSource
+            implements SafetyAlertService.FdaSource {
+        final Map<String, List<FdaRecord>> byTerm = new HashMap<>();
+        final Set<String> throwTerms = new HashSet<>();
+        final List<String> termsSeen = Collections.synchronizedList(
+                new ArrayList<String>());
+        final AtomicInteger invocations = new AtomicInteger();
+        long sleepMs;
+
+        @Override
+        public List<FdaRecord> fetchRecalls(String term) {
+            invocations.incrementAndGet();
+            termsSeen.add(term);
+            if (sleepMs > 0) {
+                try {
+                    Thread.sleep(sleepMs);
+                } catch (InterruptedException e) {
+                    // Cancelled by the service deadline.
+                    return Collections.emptyList();
+                }
+            }
+            if (throwTerms.contains(term)) {
+                throw new RuntimeException(
+                        "simulated FDA failure for term: " + term);
+            }
+            List<FdaRecord> found = byTerm.get(term);
+            return found == null
+                    ? Collections.<FdaRecord>emptyList()
+                    : new ArrayList<>(found);
+        }
+    }
+
+    /** Term-sensitive news fake: same contract as the FDA one. */
+    private static final class TermSensitiveFakeNewsSource
+            implements SafetyAlertService.NewsSource {
+        final Map<String, List<RawNewsItem>> byTerm = new HashMap<>();
+        final Set<String> throwTerms = new HashSet<>();
+        final List<String> termsSeen = Collections.synchronizedList(
+                new ArrayList<String>());
+        final AtomicInteger invocations = new AtomicInteger();
+        long sleepMs;
+
+        @Override
+        public List<RawNewsItem> fetchNews(String term) {
+            invocations.incrementAndGet();
+            termsSeen.add(term);
+            if (sleepMs > 0) {
+                try {
+                    Thread.sleep(sleepMs);
+                } catch (InterruptedException e) {
+                    // Cancelled by the service deadline.
+                    return Collections.emptyList();
+                }
+            }
+            if (throwTerms.contains(term)) {
+                throw new RuntimeException(
+                        "simulated news failure for term: " + term);
+            }
+            List<RawNewsItem> found = byTerm.get(term);
+            return found == null
+                    ? Collections.<RawNewsItem>emptyList()
+                    : new ArrayList<>(found);
+        }
+    }
+
+    private static void assertAllSingleTokens(List<String> terms) {
+        synchronized (terms) {
+            for (String term : terms) {
+                assertFalse("fetch term must not be empty",
+                        term == null || term.isEmpty());
+                assertFalse("fetch term must be a single token: "
+                        + term, term.contains(" "));
+            }
+        }
+    }
+
+    /** Strawberry FDA records, as in {@link #strawberryFda()}. */
+    private static List<FdaRecord> strawberryRecords() {
+        List<FdaRecord> records = new ArrayList<>();
+        records.add(fdaRecord("Firm A", "Fresh strawberries, 16 oz",
+                "Potential hepatitis A contamination", "Class II",
+                "Ongoing", 20261105, "ev-a", "F-0002-2026"));
+        records.add(fdaRecord("Firm B", "Strawberry jam",
+                "Potential listeria contamination", "Class I",
+                "Ongoing", 20261001, "ev-b", "F-0001-2026"));
+        return records;
+    }
+
+    /**
+     * Term-sensitive strawberry FDA fake: the fixture-style records
+     * come back ONLY for "strawberry" / "strawberries".
+     */
+    private static TermSensitiveFakeFdaSource termSensitiveStrawberryFda() {
+        TermSensitiveFakeFdaSource fda = new TermSensitiveFakeFdaSource();
+        fda.byTerm.put("strawberry", strawberryRecords());
+        fda.byTerm.put("strawberries", strawberryRecords());
+        return fda;
+    }
+
+    /**
+     * Term-sensitive strawberry news fake (distinct links per item,
+     * as real RSS items have): the stories come back ONLY for
+     * "strawberry" / "strawberries".
+     */
+    private static TermSensitiveFakeNewsSource termSensitiveStrawberryNews() {
+        TermSensitiveFakeNewsSource news = new TermSensitiveFakeNewsSource();
+        List<RawNewsItem> items = new ArrayList<>();
+        items.add(new RawNewsItem(
+                "Strawberry recall expands to more states",
+                "Example News", "news-link-1", REF_EPOCH - DAY_MS));
+        items.add(new RawNewsItem(
+                "Strawberries outbreak sickens dozens",
+                "Example News", "news-link-2", REF_EPOCH));
+        news.byTerm.put("strawberry", items);
+        news.byTerm.put("strawberries", items);
+        return news;
+    }
+
+    /** The poultry FDA record: returned ONLY for chicken / poultry. */
+    private static FdaRecord poultryRecord() {
+        return fdaRecord("Poultry Co", "Frozen poultry strips",
+                "Potential salmonella contamination", "Class I",
+                "Ongoing", 20261101, "ev-p", "F-0003-2026");
+    }
+
     private static void recordMax(AtomicInteger max, int candidate) {
         int prev;
         do {
@@ -232,22 +369,166 @@ public class SafetyAlertServiceTest {
         // Neither the FDA record nor the headline contains a product
         // NAME token; both match only via the category token
         // "chicken" (FDA side through the poultry expansion).
-        FakeFdaSource fda = new FakeFdaSource();
-        fda.records.add(fdaRecord("Poultry Co", "Frozen poultry strips",
-                "Potential salmonella contamination", "Class I",
-                "Ongoing", 20261101, "ev-p", "F-0003-2026"));
-        FakeNewsSource news = new FakeNewsSource();
-        news.items.add(newsItem("Chicken recall hits grocery stores",
-                REF_EPOCH));
-        List<SafetyAlert> alerts = service(fda, news)
+        // Term-sensitive fakes (fix round 1): the poultry record /
+        // chicken story come back ONLY when a client is queried
+        // with "chicken" or "poultry" — a raw product-name fetch
+        // retrieves nothing, so the category token must actually
+        // reach both clients as a fetch term.
+        TermSensitiveFakeFdaSource fda = new TermSensitiveFakeFdaSource();
+        fda.byTerm.put("chicken",
+                Collections.singletonList(poultryRecord()));
+        fda.byTerm.put("poultry",
+                Collections.singletonList(poultryRecord()));
+        TermSensitiveFakeNewsSource news = new TermSensitiveFakeNewsSource();
+        List<RawNewsItem> chickenNews = Collections.singletonList(
+                new RawNewsItem("Chicken recall hits grocery stores",
+                        "Example News", "chicken-news-link", REF_EPOCH));
+        news.byTerm.put("chicken", chickenNews);
+        news.byTerm.put("poultry", chickenNews);
+        List<SafetyAlert> alerts = new SafetyAlertService(fda, news)
                 .alertsForProduct("Grilled Strips", "Chicken products",
                         REF_DATE, REF_EPOCH);
         assertEquals(2, alerts.size());
         assertEquals(SafetyAlert.Tier.FDA, alerts.get(0).tier);
         assertEquals(SafetyAlert.Tier.NEWS, alerts.get(1).tier);
-        // The fetch term for a product is its name.
-        assertEquals("Grilled Strips", fda.lastTerm);
-        assertEquals("Grilled Strips", news.lastTerm);
+        // Per-token fetch: the category token reached both clients,
+        // and the raw product name was never sent as a fetch term.
+        assertTrue(fda.termsSeen.contains("chicken"));
+        assertTrue(news.termsSeen.contains("chicken"));
+        assertFalse(fda.termsSeen.contains("Grilled Strips"));
+        assertFalse(news.termsSeen.contains("Grilled Strips"));
+        assertAllSingleTokens(fda.termsSeen);
+        assertAllSingleTokens(news.termsSeen);
+    }
+
+    @Test
+    public void productMatching_strawberryProduct_nonEmptyPerTokenFetch() {
+        // Required scenario (fix round 1): a realistic multi-token
+        // product name must still retrieve alerts, because fetching
+        // happens per single folded token (bare-token query path),
+        // not as one quoted phrase built from the raw name.
+        TermSensitiveFakeFdaSource fda = termSensitiveStrawberryFda();
+        TermSensitiveFakeNewsSource news = termSensitiveStrawberryNews();
+        List<SafetyAlert> alerts = new SafetyAlertService(fda, news)
+                .alertsForProduct(
+                        "FreshHarvest Farms Organic Strawberries (16 Oz.)",
+                        "Berries", REF_DATE, REF_EPOCH);
+        assertEquals(4, alerts.size());
+        assertEquals(SafetyAlert.Tier.FDA, alerts.get(0).tier);
+        assertEquals(SafetyAlert.Tier.FDA, alerts.get(1).tier);
+        assertEquals(SafetyAlert.Tier.NEWS, alerts.get(2).tier);
+        assertEquals(SafetyAlert.Tier.NEWS, alerts.get(3).tier);
+        // The folded strawberry token was fetched from both sources;
+        // the raw name and the excluded numeric / unit tokens were
+        // never fetch terms, and every fetch term is a single token.
+        assertTrue(fda.termsSeen.contains("strawberry"));
+        assertTrue(news.termsSeen.contains("strawberry"));
+        assertFalse(fda.termsSeen.contains(
+                "FreshHarvest Farms Organic Strawberries (16 Oz.)"));
+        assertFalse(fda.termsSeen.contains("16"));
+        assertFalse(fda.termsSeen.contains("oz"));
+        assertFalse(news.termsSeen.contains("16"));
+        assertFalse(news.termsSeen.contains("oz"));
+        // Folded-distinct: the plural spelling is not fetched as a
+        // second token once its folded form is the fetch token.
+        assertFalse(fda.termsSeen.contains("strawberries"));
+        assertFalse(fda.termsSeen.contains("farms"));
+        assertTrue(fda.termsSeen.contains("farm"));
+        assertAllSingleTokens(fda.termsSeen);
+        assertAllSingleTokens(news.termsSeen);
+    }
+
+    @Test
+    public void productDedupe_sameFdaRecordForTwoTokens_appearsOnce() {
+        // The same record (same event_id + recall_number) is
+        // returned for BOTH the "grilled" and the "strip" token
+        // calls; the merged set must contain it exactly once.
+        FdaRecord dup = fdaRecord("Grill Co", "Grilled strips, frozen",
+                "Potential salmonella contamination", "Class I",
+                "Ongoing", 20261101, "ev-dup", "F-0010-2026");
+        TermSensitiveFakeFdaSource fda = new TermSensitiveFakeFdaSource();
+        fda.byTerm.put("grilled", Collections.singletonList(dup));
+        fda.byTerm.put("strip", Collections.singletonList(dup));
+        List<SafetyAlert> alerts =
+                new SafetyAlertService(fda, new TermSensitiveFakeNewsSource())
+                        .alertsForProduct("Grilled Strips", null,
+                                REF_DATE, REF_EPOCH);
+        // Both token calls really happened (the duplicate came from
+        // two calls, not one).
+        assertTrue(fda.termsSeen.contains("grilled"));
+        assertTrue(fda.termsSeen.contains("strip"));
+        assertEquals(1, alerts.size());
+        assertEquals(SafetyAlert.Tier.FDA, alerts.get(0).tier);
+        assertEquals("Grill Co", alerts.get(0).headline);
+    }
+
+    @Test
+    public void productDedupe_newsSameLinkForTwoTokens_appearsOnce() {
+        // Two DIFFERENT matching stories sharing one link, returned
+        // for two different token calls: news dedupe is by link
+        // (first wins), so only the first survives to the matcher.
+        // (The matcher's own title-prefix dedupe would keep both:
+        // their first 6 tokens differ.)
+        TermSensitiveFakeNewsSource news = new TermSensitiveFakeNewsSource();
+        news.byTerm.put("grilled", Collections.singletonList(
+                new RawNewsItem("Grilled strips recall hits grocery stores",
+                        "Example News", "dup-link", REF_EPOCH)));
+        news.byTerm.put("strip", Collections.singletonList(
+                new RawNewsItem("Strip snack recall expands across state lines",
+                        "Example News", "dup-link", REF_EPOCH - DAY_MS)));
+        List<SafetyAlert> alerts =
+                new SafetyAlertService(new TermSensitiveFakeFdaSource(), news)
+                        .alertsForProduct("Grilled Strips", null,
+                                REF_DATE, REF_EPOCH);
+        assertEquals(1, alerts.size());
+        assertEquals(SafetyAlert.Tier.NEWS, alerts.get(0).tier);
+        assertEquals("Grilled strips recall hits grocery stores",
+                alerts.get(0).headline);
+    }
+
+    @Test
+    public void productFailure_oneTokenThrows_otherTokensStillReturn() {
+        // Per-token isolation (fix round 1): the first token call
+        // ("grilled") throws in BOTH sources, but that contributes
+        // nothing for that token only — the later "chicken" token
+        // call still yields its record / story for each source.
+        TermSensitiveFakeFdaSource fda = new TermSensitiveFakeFdaSource();
+        fda.throwTerms.add("grilled");
+        fda.byTerm.put("chicken",
+                Collections.singletonList(poultryRecord()));
+        TermSensitiveFakeNewsSource news = new TermSensitiveFakeNewsSource();
+        news.throwTerms.add("grilled");
+        news.byTerm.put("chicken", Collections.singletonList(
+                new RawNewsItem("Chicken recall hits grocery stores",
+                        "Example News", "chicken-news-link", REF_EPOCH)));
+        List<SafetyAlert> alerts = new SafetyAlertService(fda, news)
+                .alertsForProduct("Grilled Strips", "Chicken products",
+                        REF_DATE, REF_EPOCH);
+        assertEquals(2, alerts.size());
+        assertEquals(SafetyAlert.Tier.FDA, alerts.get(0).tier);
+        assertEquals(SafetyAlert.Tier.NEWS, alerts.get(1).tier);
+        // The failing token was attempted before the succeeding one.
+        assertTrue(fda.termsSeen.indexOf("grilled")
+                < fda.termsSeen.indexOf("chicken"));
+    }
+
+    @Test
+    public void productDeadline_singleOverallDeadlineAcrossTokens() {
+        // The FDA source stalls on its (per-token) calls; the one
+        // overall deadline — not a fresh bound per token — cuts it
+        // off and the news source's per-token results still return.
+        TermSensitiveFakeFdaSource fda = termSensitiveStrawberryFda();
+        fda.sleepMs = 30000;
+        TermSensitiveFakeNewsSource news = termSensitiveStrawberryNews();
+        SafetyAlertService svc = new SafetyAlertService(fda, news, 300);
+        long start = System.currentTimeMillis();
+        List<SafetyAlert> alerts = svc.alertsForProduct(
+                "FreshHarvest Farms Organic Strawberries (16 Oz.)",
+                "Berries", REF_DATE, REF_EPOCH);
+        long elapsed = System.currentTimeMillis() - start;
+        assertEquals(2, alerts.size());
+        assertEquals(SafetyAlert.Tier.NEWS, alerts.get(0).tier);
+        assertTrue("bounded wait, elapsed=" + elapsed, elapsed < 10000);
     }
 
     @Test
