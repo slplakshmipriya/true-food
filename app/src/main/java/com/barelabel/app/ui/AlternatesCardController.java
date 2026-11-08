@@ -18,10 +18,14 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 
 import com.barelabel.app.AlternateRanker;
+import com.barelabel.app.AlternativeExplainer;
 import com.barelabel.app.AnalyticsTracker;
 import com.barelabel.app.FlaggedIngredientManager;
+import com.barelabel.app.NutrientDelta;
 import com.barelabel.app.R;
 import com.barelabel.app.model.ProductResult;
+import com.barelabel.app.nutrition.NutritionAnalysis;
+import com.barelabel.app.nutrition.NutritionConfig;
 import com.barelabel.app.pricing.PriceFetcher;
 import com.barelabel.app.util.StringNormalizer;
 
@@ -65,6 +69,8 @@ public class AlternatesCardController {
     private static final int C_GREEN_700 = Color.parseColor("#15803D");
     private static final int C_GREEN_800 = Color.parseColor("#166534");
     private static final int C_BLUE_600 = Color.parseColor("#2563EB");
+    private static final int C_AMBER_600 = Color.parseColor("#D97706");
+    private static final int C_RED_600 = Color.parseColor("#DC2626");
     private static final int C_ORANGE_700 = Color.parseColor("#C2410C");
     private static final int C_EMERALD_700 = Color.parseColor("#047857");
     private static final int C_GRAY_100 = Color.parseColor("#F3F4F6");
@@ -115,6 +121,16 @@ public class AlternatesCardController {
     private boolean panelCategoryIsUsda = false;
     /** Row keys (name|brand) currently expanded; preserved across re-ranks. */
     private final Set<String> expandedKeys = new HashSet<>();
+    /** Row keys whose "Compare nutrients" block is open; preserved across re-ranks. */
+    private final Set<String> nutrientCompareKeys = new HashSet<>();
+
+    // Candidate (primary product) context for nutrition-aware ranking
+    // (Contract §7.2): set by MainActivity via setCandidateContext before
+    // setPool. Null candidate means no context — topRanked then keeps the
+    // legacy ingredient-only ranking exactly as before.
+    private ProductResult candidateContext;
+    private NutritionAnalysis candidateAnalysis;
+    private NutritionConfig nutritionConfig;
 
     /** Host (MainActivity) tracks the max-2 compare picks across verdict + rows. */
     public interface ComparePickListener {
@@ -248,12 +264,31 @@ public class AlternatesCardController {
         this.panelCategory = panelCategory != null ? panelCategory : "";
         this.panelCategoryIsUsda = panelCategoryIsUsda;
         this.expandedKeys.clear();
+        this.nutrientCompareKeys.clear();
         this.compareBoxes.clear();
         partitionPool();
     }
 
     public void setSuperiorTerms(Set<String> superiorTerms) {
         this.superiorTerms = superiorTerms != null ? superiorTerms : new HashSet<>();
+    }
+
+    /**
+     * Candidate context for nutrition-aware ranking (Contract §7.2):
+     * the primary product, its nutrition analysis, and the nutrition
+     * config. MainActivity calls this BEFORE {@link #setPool}. When a
+     * candidate is set, each relevance stack is ranked with
+     * {@link AlternateRanker#rankNutritionAware} and rows render the
+     * ranked badges, component scores, reasons, and nutrient deltas it
+     * produces. Passing a null candidate clears the context and
+     * restores the legacy ingredient-only ranking.
+     */
+    public void setCandidateContext(ProductResult candidate,
+                                    NutritionAnalysis candidateAnalysis,
+                                    NutritionConfig config) {
+        this.candidateContext = candidate;
+        this.candidateAnalysis = candidateAnalysis;
+        this.nutritionConfig = config;
     }
 
     public void setComparePickListener(ComparePickListener listener) {
@@ -470,8 +505,9 @@ public class AlternatesCardController {
                                     + TextUtils.join(", ", flaggedCategories)
                                     + ".\nConsider relaxing your search.");
                         } else {
-                            text.setText("No clean choices were found for " + foodType
-                                    + " in the database.");
+                            // Contract §7.2 category-variant empty state.
+                            text.setText("No clean and safe alternatives were found in "
+                                    + foodType + ".");
                         }
                     } else if (activeFilterCount > 0) {
                         // Branded search with filters on: same smart relief.
@@ -479,8 +515,9 @@ public class AlternatesCardController {
                                 + " with your current filters on.");
                         showSmartFilterRelief();
                     } else {
-                        text.setText("No clean alternatives were found for this item"
-                                + " in the database.");
+                        // Contract §7.2 empty state: sourcing ran but no
+                        // alternate qualified as CLEAN and SAFE.
+                        text.setText("No clean and safe alternatives were found for this item.");
                         clearFilterSuggestionBar();
                         if (clearFiltersButton != null) {
                             clearFiltersButton.setVisibility(View.GONE);
@@ -552,8 +589,22 @@ public class AlternatesCardController {
         return true;
     }
 
-    /** Ranks one stack with the shared ranking logic (no item cap — the stack scrolls). */
+    /**
+     * Ranks one stack (no item cap — the stack scrolls). With candidate
+     * context set (Contract §7.2) the stack is ranked with the
+     * nutrition-aware ranker — the ranker itself defensively drops any
+     * item that is not ingredient CLEAN with a SAFE analysis, and with a
+     * null config it applies that same defence before delegating to the
+     * legacy ranking. Without context the legacy ranking runs exactly
+     * as before. Called by the prefer-organic toggle too, so re-ranking
+     * stays fully local — no network call.
+     */
     private List<AlternateRanker.RankedProduct> topRanked(List<ProductResult> stack) {
+        if (candidateContext != null) {
+            return AlternateRanker.rankNutritionAware(candidateContext,
+                    candidateAnalysis, stack, superiorTerms, preferOrganic,
+                    nutritionConfig);
+        }
         return AlternateRanker.rankAndFilter(stack, superiorTerms, preferOrganic);
     }
 
@@ -853,10 +904,55 @@ public class AlternatesCardController {
         metaView.setPadding(0, dp(4), 0, 0);
         row.addView(metaView);
 
+        // Nutrition summary (Contract §7.2): present only on
+        // nutrition-aware rows — the ranker fills overallScore /
+        // nutritionScore / reasons only in that mode, so legacy rows
+        // render exactly as before. Everything shown here is rendered
+        // from the RankedProduct as produced; nothing is recomputed.
+        boolean nutritionRow = item.overallScore != null
+                || item.nutritionScore != null || !item.reasons.isEmpty();
+        if (nutritionRow) {
+            // CLEAN and SAFE badges: eligibility (ingredient CLEAN and
+            // nutrition SAFE) is what the nutrition-aware ranker
+            // guarantees for every row it returns.
+            LinearLayout badgeRow = new LinearLayout(ctx);
+            badgeRow.setOrientation(LinearLayout.HORIZONTAL);
+            badgeRow.setPadding(0, dp(6), 0, 0);
+            badgeRow.addView(makeBadge(ctx, "CLEAN", C_GREEN_700));
+            badgeRow.addView(makeBadge(ctx, "SAFE", C_BLUE_600));
+            row.addView(badgeRow);
+
+            TextView scoresView = new TextView(ctx);
+            scoresView.setText("Overall Score "
+                    + (item.overallScore != null ? item.overallScore : "—")
+                    + " • Nutrition Score "
+                    + (item.nutritionScore != null ? item.nutritionScore : "—"));
+            scoresView.setTextSize(13f);
+            scoresView.setTypeface(scoresView.getTypeface(), Typeface.BOLD);
+            scoresView.setTextColor(C_GRAY_700);
+            scoresView.setPadding(0, dp(4), 0, 0);
+            row.addView(scoresView);
+
+            // Up to two deterministic reasons from AlternativeExplainer.
+            for (String reason : item.reasons) {
+                TextView reasonView = new TextView(ctx);
+                reasonView.setText(reason);
+                reasonView.setTextSize(12f);
+                reasonView.setTextColor(C_EMERALD_700);
+                reasonView.setPadding(0, dp(2), 0, 0);
+                row.addView(reasonView);
+            }
+        }
+
         // Why-this-one line: names the alt's real clean-highlight ingredients
         // (from its own label), so the pick explains itself at a glance.
+        // Suppressed when a ranker reason already says the same thing —
+        // the why line must not duplicate a reason verbatim (Contract §7.2).
         String whyText = buildWhyLine(alt);
-        if (!whyText.isEmpty()) {
+        if (!whyText.isEmpty() && !item.reasons.contains(whyText)
+                && !item.reasons.contains(
+                        whyText.startsWith("Why: ")
+                                ? whyText.substring("Why: ".length()) : whyText)) {
             TextView whyView = new TextView(ctx);
             whyView.setText(whyText);
             whyView.setTextSize(12f);
@@ -999,6 +1095,37 @@ public class AlternatesCardController {
                         ctx, alt, null) ? View.VISIBLE : View.GONE);
         row.addView(disclosureView);
 
+        // "Compare nutrients" toggle (Contract §7.2): expands a visual
+        // paired-bar comparison built from the ranker's NutrientDeltas.
+        // Distinct from the product-compare pick button above, which
+        // keeps its own "Compare" label and behavior. Only rows whose
+        // ranking produced deltas get the toggle.
+        if (!item.deltas.isEmpty()) {
+            final LinearLayout compareBox = buildNutrientComparison(ctx, item.deltas);
+            final String compareKey = rowKey(alt);
+            boolean compareOpen = nutrientCompareKeys.contains(compareKey);
+            compareBox.setVisibility(compareOpen ? View.VISIBLE : View.GONE);
+            android.widget.Button compareNutrientsButton = makeActionButton(ctx,
+                    "Compare nutrients", C_WHITE, C_BLUE_600, C_BLUE_600);
+            compareNutrientsButton.setContentDescription(compareOpen
+                    ? "Compare nutrients, expanded"
+                    : "Compare nutrients, collapsed");
+            compareNutrientsButton.setOnClickListener(v -> {
+                boolean nowOpen = compareBox.getVisibility() != View.VISIBLE;
+                if (nowOpen) {
+                    nutrientCompareKeys.add(compareKey);
+                } else {
+                    nutrientCompareKeys.remove(compareKey);
+                }
+                compareBox.setVisibility(nowOpen ? View.VISIBLE : View.GONE);
+                compareNutrientsButton.setContentDescription(nowOpen
+                        ? "Compare nutrients, expanded"
+                        : "Compare nutrients, collapsed");
+            });
+            actionRow.addView(compareNutrientsButton);
+            row.addView(compareBox);
+        }
+
         // Expandable detail: full ingredients + Buy
         LinearLayout expandBox = new LinearLayout(ctx);
         expandBox.setOrientation(LinearLayout.VERTICAL);
@@ -1046,6 +1173,133 @@ public class AlternatesCardController {
         });
 
         return row;
+    }
+
+    /** Small filled pill badge (CLEAN / SAFE) in the row's badge row. */
+    private TextView makeBadge(Context ctx, String label, int fillColor) {
+        TextView badge = new TextView(ctx);
+        badge.setText(label);
+        badge.setTextSize(11f);
+        badge.setTypeface(badge.getTypeface(), Typeface.BOLD);
+        badge.setTextColor(C_WHITE);
+        badge.setPadding(dp(8), dp(3), dp(8), dp(3));
+        badge.setBackground(pillBackground(fillColor, 0));
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        p.setMarginEnd(dp(6));
+        badge.setLayoutParams(p);
+        return badge;
+    }
+
+    /**
+     * The expanded nutrient comparison (Contract §7.2, PRD §10.3): for
+     * each delta, the nutrient label with its improvement badge, then
+     * two labeled bar lines — exactly "Your item" and
+     * "This alternative" — with the per-100 value beside each bar and
+     * fills from the delta's favorable percentiles. When a delta has no
+     * favorable percentile on either side, the bar pair is hidden (the
+     * delta's contract) and only the labeled values show. No
+     * number-and-arrow strings anywhere: differences are carried by
+     * the badge and the bars, never by an arrow glyph.
+     */
+    private LinearLayout buildNutrientComparison(Context ctx,
+                                                 List<NutrientDelta> deltas) {
+        LinearLayout box = new LinearLayout(ctx);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(0, dp(8), 0, 0);
+        for (NutrientDelta delta : deltas) {
+            LinearLayout header = new LinearLayout(ctx);
+            header.setOrientation(LinearLayout.HORIZONTAL);
+            header.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            header.setPadding(0, dp(8), 0, dp(2));
+            TextView nameView = new TextView(ctx);
+            nameView.setText(delta.label);
+            nameView.setTextSize(13f);
+            nameView.setTypeface(nameView.getTypeface(), Typeface.BOLD);
+            nameView.setTextColor(C_GRAY_900);
+            header.addView(nameView);
+            if (delta.badge != null && !delta.badge.isEmpty()) {
+                TextView badgeView = new TextView(ctx);
+                badgeView.setText(delta.badge);
+                badgeView.setTextSize(11f);
+                badgeView.setTypeface(badgeView.getTypeface(), Typeface.BOLD);
+                badgeView.setTextColor(C_GREEN_800);
+                badgeView.setPadding(dp(8), dp(3), dp(8), dp(3));
+                badgeView.setBackground(pillBackground(C_GRAY_100, C_GRAY_200));
+                LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT);
+                bp.setMarginStart(dp(8));
+                badgeView.setLayoutParams(bp);
+                header.addView(badgeView);
+            }
+            box.addView(header);
+            box.addView(buildBarLine(ctx, "Your item",
+                    AlternativeExplainer.formatAmount(delta.candidatePer100, delta.unit),
+                    delta.candidateFavorable));
+            box.addView(buildBarLine(ctx, "This alternative",
+                    AlternativeExplainer.formatAmount(delta.alternativePer100, delta.unit),
+                    delta.alternativeFavorable));
+        }
+        return box;
+    }
+
+    /**
+     * One labeled bar line: the label, a track whose fill width is the
+     * favorable percentile, and the numeric per-100 value beside the
+     * bar (bars never carry meaning by color alone, Contract §7.3).
+     * A null favorable percentile hides the bar; the label and value
+     * still show.
+     */
+    private LinearLayout buildBarLine(Context ctx, String label, String valueText,
+                                      Double favorable) {
+        LinearLayout line = new LinearLayout(ctx);
+        line.setOrientation(LinearLayout.HORIZONTAL);
+        line.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        line.setPadding(0, dp(2), 0, dp(2));
+
+        TextView labelView = new TextView(ctx);
+        labelView.setText(label);
+        labelView.setTextSize(12f);
+        labelView.setTextColor(C_GRAY_700);
+        labelView.setLayoutParams(new LinearLayout.LayoutParams(
+                dp(110), ViewGroup.LayoutParams.WRAP_CONTENT));
+        line.addView(labelView);
+
+        if (favorable != null) {
+            double pct = Math.max(0.0, Math.min(100.0, favorable));
+            LinearLayout track = new LinearLayout(ctx);
+            track.setOrientation(LinearLayout.HORIZONTAL);
+            track.setBackground(pillBackground(C_GRAY_200, 0));
+            LinearLayout.LayoutParams trackParams = new LinearLayout.LayoutParams(
+                    0, dp(10), 1f);
+            trackParams.setMarginEnd(dp(8));
+            track.setLayoutParams(trackParams);
+            View fill = new View(ctx);
+            fill.setBackground(pillBackground(barColor(pct), 0));
+            track.addView(fill, new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.MATCH_PARENT, (float) pct));
+            View rest = new View(ctx);
+            track.addView(rest, new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.MATCH_PARENT, (float) (100.0 - pct)));
+            line.addView(track);
+        }
+
+        TextView valueView = new TextView(ctx);
+        valueView.setText(valueText);
+        valueView.setTextSize(12f);
+        valueView.setTypeface(valueView.getTypeface(), Typeface.BOLD);
+        valueView.setTextColor(C_GRAY_900);
+        line.addView(valueView);
+        return line;
+    }
+
+    /** Fill color for a favorable percentile (Contract §7.1 thresholds). */
+    private int barColor(double favorable) {
+        if (favorable >= 67) return C_GREEN_700;
+        if (favorable >= 34) return C_AMBER_600;
+        return C_RED_600;
     }
 
     /**

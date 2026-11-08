@@ -1010,6 +1010,16 @@ private void refreshRecents() {
                     primaryResult.nutritionAnalysis = altSearch.primaryAnalysis;
                 }
                 List<ProductResult> rawAlternates = altSearch.alternates;
+                // Candidate context for nutrition-aware alternates ranking
+                // (Contract §7.2), set before the pool: the finder's
+                // refreshed primary analysis when sourcing ran, else the
+                // analysis stored on the primary, else the step-3 one.
+                NutritionAnalysis contextAnalysis = altSearch.primaryAnalysis != null
+                        ? altSearch.primaryAnalysis
+                        : (primaryResult.nutritionAnalysis != null
+                                ? primaryResult.nutritionAnalysis : primaryAnalysis);
+                alternatesController.setCandidateContext(primaryResult,
+                        contextAnalysis, nutritionConfig());
                 alternatesController.setPool(rawAlternates, StringNormalizer.wordTokens(product),
                         categoryIntent, foodType, apiCategory);
 
