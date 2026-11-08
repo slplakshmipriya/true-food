@@ -6,7 +6,11 @@ import android.text.TextUtils;
 import com.barelabel.app.BuildConfig;
 import com.barelabel.app.FlaggedIngredientManager;
 import com.barelabel.app.UsdaResponseCache;
+import com.barelabel.app.model.NutritionProfile;
 import com.barelabel.app.model.ProductResult;
+import com.barelabel.app.nutrition.NutritionConfig;
+import com.barelabel.app.nutrition.NutritionConfigLoader;
+import com.barelabel.app.nutrition.UsdaNutritionParser;
 import com.barelabel.app.search.UsdaSpamFilter;
 
 import org.json.JSONArray;
@@ -343,6 +347,29 @@ public class UsdaApiClient {
         result.gtinUpc = food.optString("gtinUpc", "");
         result.brandName = brandName;
         result.brandOwner = brandOwner;
+        // Nutrition profile via the single parser path (Contract §3). A
+        // null config means the nutrition config failed validation:
+        // nutrition is UNAVAILABLE, so attach an empty profile instead of
+        // calling the parser.
+        result.fdcId = food.optLong("fdcId", 0);
+        NutritionConfig nutritionConfig = null;
+        try {
+            nutritionConfig = NutritionConfigLoader.load(appContext);
+        } catch (Exception ignored) {
+            // Config access must never break the product build.
+        }
+        if (nutritionConfig != null) {
+            try {
+                result.nutritionProfile =
+                        UsdaNutritionParser.parse(food, nutritionConfig);
+            } catch (Exception ignored) {
+                // A parser failure must never fail the search.
+                result.nutritionProfile =
+                        NutritionProfile.empty(result.fdcId);
+            }
+        } else {
+            result.nutritionProfile = NutritionProfile.empty(result.fdcId);
+        }
         return result;
     }
 
