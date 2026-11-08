@@ -1362,8 +1362,14 @@ private void refreshRecents() {
         setSkeletonVisible(false);
     // Unbranded category search (e.g. "cookies"): the top hit is just one random
     // branded product in the category, not what the user asked about, so hide the
-    // primary verdict card and show only the clean-choices card.
-    if (categoryIntent) {
+    // primary verdict card and show only the clean-choices card — but only when
+    // the clean-choices card has something to show. When it comes back empty
+    // (produce searches like "broccoli": the candidates scatter across USDA
+    // categories and no alternate survives ranking), fall through and show the
+    // primary verdict instead of leaving the user with no result at all.
+    boolean hidePrimary = CategorySearchDecider.hidePrimaryCard(
+            categoryIntent, alternatesController.displayableCount());
+    if (hidePrimary) {
         if (resultCard != null) resultCard.setVisibility(View.GONE);
         alternatesController.show(foodType, true, true, flaggedCategories,
                 countActiveFilters(), reliefCounts);
@@ -1596,8 +1602,11 @@ private void refreshRecents() {
     //     BUY! button; inserts only when alerts arrive (§6.5).
     loadSafetyReports(result, foodType);
 
-    // 4. Clean Alternates Section
-    alternatesController.show(foodType, categoryIntent, isClean, flaggedCategories,
+    // 4. Clean Alternates Section. hidePrimary (not the raw category
+    //    flag): a category search that fell through to the primary
+    //    verdict renders this card in branded mode, so its empty state
+    //    reads "for this item" instead of naming the category.
+    alternatesController.show(foodType, hidePrimary, isClean, flaggedCategories,
             countActiveFilters(), reliefCounts);
     updateSourceLine();
     updateStickyBar();

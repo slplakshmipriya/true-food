@@ -158,4 +158,23 @@ public class CategorySearchDeciderTest {
         assertFalse(CategorySearchDecider.isCategorySearch(
                 "bread", product, token -> false));
     }
+
+    // --- produce bug: category search with zero displayable alternates
+    //     must NOT hide the primary verdict (blank-result regression) ---
+
+    @Test
+    public void categorySearchWithAlternates_hidesPrimary() {
+        assertTrue(CategorySearchDecider.hidePrimaryCard(true, 3));
+    }
+
+    @Test
+    public void categorySearchWithNoAlternates_showsPrimary() {
+        assertFalse(CategorySearchDecider.hidePrimaryCard(true, 0));
+    }
+
+    @Test
+    public void brandedSearch_neverHidesPrimary() {
+        assertFalse(CategorySearchDecider.hidePrimaryCard(false, 0));
+        assertFalse(CategorySearchDecider.hidePrimaryCard(false, 5));
+    }
 }

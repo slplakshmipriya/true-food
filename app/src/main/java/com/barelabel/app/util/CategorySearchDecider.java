@@ -50,4 +50,19 @@ public final class CategorySearchDecider {
         }
         return true;
     }
+
+    /**
+     * True when a category search should hide the primary verdict card:
+     * only when the clean-choices card has at least one alternate to
+     * display in its place. A category search whose clean choices come
+     * back empty must fall back to the primary verdict — hiding the
+     * card then leaves the user with no result at all (the produce
+     * bug: generic queries like "broccoli" are category searches, and
+     * their scattered USDA categories can yield zero displayable
+     * alternates even though the search itself found products).
+     */
+    public static boolean hidePrimaryCard(boolean categoryIntent,
+                                          int displayableAlternates) {
+        return categoryIntent && displayableAlternates > 0;
+    }
 }

@@ -412,6 +412,17 @@ public class AlternatesCardController {
     }
 
     /**
+     * How many alternates the current pool would display if the card
+     * were shown now — the same ranking (including the CLEAN + SAFE
+     * defence) that {@link #show} applies, without binding any views.
+     * Lets the caller avoid hiding a primary verdict behind a
+     * clean-choices card that would render empty.
+     */
+    public int displayableCount() {
+        return topRanked(exactPool).size() + topRanked(morePool).size();
+    }
+
+    /**
      * Binds the clean-alternates card as two ranked stacks. For category searches
      * the heading names the category ("Clean choices in <Category>"); otherwise it
      * reads "Clean Alternates". When nothing passes, an explicit empty state names
