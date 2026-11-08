@@ -20,9 +20,14 @@ Checks:
       LLM constant. Reported PRESENT / MISSING, never fatal. Also:
       blend weights must not be rendered in layouts (hard check), no
       nutrition endpoint / persistence strings in share/ or spellcheck/
-      (hard check), and -- when the nutrition config asset exists -- a
-      light section 1.3 validation of it (hard check when present).
-  (e) Chips fixture validation (see expected values below).
+      (hard check, all file types), and -- when the nutrition config
+      asset exists -- the full section 1.3 validation of the real
+      asset in section (d2) (hard check when present).
+  (e) Chips fixture validation (see expected values below), including
+      plausible-range checks on every configured fixture value.
+  (f) NUT-09 alternates UI markers (Contract 7.2, hard).
+  (g) Machine-checked percentile claims for the pinned candidates
+      below (mirror of the PeerCohort plausible-range + MAD fence).
 
 ----------------------------------------------------------------------
 Chips fixture: hand-computed expected values (NUT-00)
@@ -39,13 +44,15 @@ Fiber (nutrientId 1079, g), sorted:
 
 Percentiles use the PRD section 6.5 formula
     rawPercentile = 100 * (peersBelow + 0.5 * peersEqual) / peerCount
-with the candidate excluded from its own peer set (peerCount = 12):
+over the peer distribution AFTER the Contract section 4 pipeline —
+candidate excluded, plausible-range filter, then the median/MAD
+fence (median +/- 3.5 x 1.4826 x MAD) that PeerCohort applies:
 
   * Candidate-like product fdcId 990001
     ("Potato Chips, Classic Salted", sodium 920 mg, fiber 1.0 g):
       sodium raw percentile = 100.0  (12 of 12 peers below)
       sodium favorable percentile (higher_bad) = 0.0
-      fiber  raw percentile = 0.0    (0 of 12 peers below)
+      fiber  raw percentile = 0.0    (0 peers below)
       fiber  favorable percentile (higher_good) = 0.0
     -> sodium crosses the section 1.2 flag rule (pct >= 85 and >= 600 mg)
        and fiber crosses the low rule (pct <= 15 and <= 3 g): the mockup
@@ -54,7 +61,11 @@ with the candidate excluded from its own peer set (peerCount = 12):
   * Median product fdcId 990007
     ("Potato Chips, Lightly Salted", sodium 450 mg, fiber 4.0 g):
       sodium raw percentile = 50.0   (6 of 12 peers below)
-      fiber  raw percentile = 75.0   (9 of 12 peers below)
+      fiber  raw percentile = 81.82  (the MAD fence drops the 7.0 g
+             peer first, leaving 11 peers, 9 below: 100 * 9 / 11.
+             A pre-fence figure of 75.0 circulated in an earlier
+             revision of this docstring; 81.82 is what the production
+             pipeline computes, pinned by PeerCohortTest.)
 
   * Clean-and-safe-looking product fdcId 990013
     ("Lentil Chips, Sea Salt", sodium 140 mg, fiber 7.0 g):
@@ -72,9 +83,12 @@ fdcId 990013. (An earlier 72.0 g value was the cohort maximum at
 percentile 100.0 and did flag; any value below 62 g would instead
 push fdcId 990003 and 990010 over the carbs percentile threshold.)
 
-Deferred to NUT-11: broader server-marker file-type scope, and
-stronger fixture validation (plausible-range checks and
-machine-checked percentile claims).
+NUT-11 additions: every percentile claim above is machine-checked
+by section (g) against a mirror of the PeerCohort pipeline; fixture
+values are checked against the config's plausible ranges in
+section (e); the section (d) server-marker scan covers every file
+type under share/ and spellcheck/; and section (d2) runs the full
+section 1.3 validation against the real config asset.
 ----------------------------------------------------------------------
 """
 
@@ -286,13 +300,18 @@ def check_markers():
     else:
         print("  OK    no blend-weight markers in layouts")
 
-    # Hard check: no nutrition endpoint/persistence strings on the servers.
+    # Hard check: no nutrition endpoint/persistence strings on the
+    # servers. NUT-11: scan every file type, not just *.py — an
+    # endpoint string is a contract violation wherever it lands
+    # (JS/HTML/JSON/config), and marker strings are plain ASCII.
     server_hits = []
     for server_dir in ("share", "spellcheck"):
         base = ROOT / server_dir
         if not base.is_dir():
             continue
-        for path in sorted(base.rglob("*.py")):
+        for path in sorted(base.rglob("*")):
+            if not path.is_file():
+                continue
             text = path.read_text(encoding="utf-8", errors="replace")
             for marker in SERVER_NUTRITION_MARKERS:
                 if marker in text:
@@ -305,16 +324,31 @@ def check_markers():
         print("  OK    no nutrition endpoint/persistence markers in share/ or spellcheck/")
 
 
+def _reject_duplicate_keys(pairs):
+    """object_pairs_hook: §1.3 rejects duplicate keys in any object;
+    a plain json.loads would silently keep the last value."""
+    obj = {}
+    for key, value in pairs:
+        if key in obj:
+            raise ValueError(f"duplicate key {key!r}")
+        obj[key] = value
+    return obj
+
+
 def check_config_if_present():
     section("(d2) Nutrition config validation (Contract 1.3, when present)")
     if not CONFIG_ASSET.exists():
         print(f"  SKIP  {CONFIG_ASSET.relative_to(ROOT)} not present yet (NUT-01)")
         return
+    # Full section 1.3 validation of the REAL asset (NUT-11; this is
+    # the "test reads the real asset" check deferred from NUT-01).
+    # Mirrors NutritionConfigLoader's fail-closed rule list.
     try:
-        cfg = json.loads(CONFIG_ASSET.read_text(encoding="utf-8"))
+        cfg = json.loads(CONFIG_ASSET.read_text(encoding="utf-8"),
+                         object_pairs_hook=_reject_duplicate_keys)
     except Exception as exc:  # noqa: BLE001
-        failures.append(f"nutrition_config.json does not parse: {exc}")
-        print(f"  FAIL  config does not parse: {exc}")
+        failures.append(f"nutrition_config.json fails the 1.3 load: {exc}")
+        print(f"  FAIL  config fails the 1.3 load: {exc}")
         return
     problems = []
     blend = cfg.get("blend") or {}
@@ -324,23 +358,53 @@ def check_config_if_present():
     keys = [n.get("key") for n in cfg.get("nutrients", [])]
     if len(keys) != len(set(keys)):
         problems.append("duplicate nutrient keys")
+    seen_usda_ids = {}
     for nut in cfg.get("nutrients", []):
+        key = nut.get("key")
         if nut.get("direction") not in ("higher_good", "higher_bad"):
-            problems.append(f"{nut.get('key')}: unknown direction {nut.get('direction')!r}")
+            problems.append(f"{key}: unknown direction {nut.get('direction')!r}")
+        if nut.get("unit") not in ("g", "mg", "kcal"):
+            problems.append(f"{key}: unknown unit {nut.get('unit')!r}")
         if not (nut.get("weight") or 0) > 0:
-            problems.append(f"{nut.get('key')}: non-positive weight")
-        if not (nut.get("plausibleMin", 0) < nut.get("plausibleMax", 0)):
-            problems.append(f"{nut.get('key')}: plausibleMin >= plausibleMax")
+            problems.append(f"{key}: non-positive weight")
+        plausible_min = nut.get("plausibleMin")
+        plausible_max = nut.get("plausibleMax")
+        if plausible_min is None or plausible_max is None \
+                or not plausible_min < plausible_max:
+            problems.append(f"{key}: plausibleMin >= plausibleMax")
+        else:
+            good_at, bad_at = nut.get("goodAt"), nut.get("badAt")
+            if good_at is not None and good_at == bad_at:
+                problems.append(f"{key}: anchors equal ({good_at})")
+            for anchor_name, anchor in (("goodAt", good_at), ("badAt", bad_at)):
+                if anchor is not None \
+                        and not (plausible_min <= anchor <= plausible_max):
+                    problems.append(
+                        f"{key}: {anchor_name} {anchor} outside plausible "
+                        f"range [{plausible_min}, {plausible_max}]")
+        for usda_id in nut.get("usdaIds") or []:
+            if usda_id in seen_usda_ids:
+                problems.append(
+                    f"duplicate USDA ID {usda_id} "
+                    f"({seen_usda_ids[usda_id]} and {key})")
+            seen_usda_ids[usda_id] = key
     for name, profile in (cfg.get("rankingProfiles") or {}).items():
         s = sum(profile.values())
         if abs(s - 1.0) > 0.001:
             problems.append(f"ranking profile {name} sums to {s}, not 1.0")
+    peers = cfg.get("peers") or {}
+    if (peers.get("minPeers") or 0) < 1:
+        problems.append(f"minPeers < 1: {peers.get('minPeers')}")
+    scoring = cfg.get("scoring") or {}
+    min_coverage = scoring.get("minCoverage")
+    if min_coverage is None or not (0 < min_coverage <= 1):
+        problems.append(f"minCoverage outside (0, 1]: {min_coverage}")
     if problems:
         for p in problems:
             failures.append(f"config validation: {p}")
             print(f"  FAIL  {p}")
     else:
-        print("  OK    config parses and passes the section 1.3 checks above")
+        print("  OK    real config asset passes the full section 1.3 validation")
 
 
 def _nutrient_value(food, nutrient_id):
@@ -432,6 +496,23 @@ def check_nut09_alternates_ui():
                   "or not before setPool")
 
 
+def _config_plausible_ranges():
+    """usdaId -> (plausibleMin, plausibleMax, key) from the real asset,
+    or None when the asset is missing/unreadable."""
+    if not CONFIG_ASSET.exists():
+        return None
+    try:
+        cfg = json.loads(CONFIG_ASSET.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 - caller reports the skip
+        return None
+    ranges = {}
+    for nut in cfg.get("nutrients", []):
+        for usda_id in nut.get("usdaIds") or []:
+            ranges[usda_id] = (nut.get("plausibleMin"),
+                               nut.get("plausibleMax"), nut.get("key"))
+    return ranges
+
+
 def check_chips_fixture():
     section("(e) Chips fixture validation (NUT-00)")
     if not CHIPS_FIXTURE.exists():
@@ -485,6 +566,35 @@ def check_chips_fixture():
                     print(f"  FAIL  {label}: nutrient entry missing {key}")
                     break
 
+    # Plausible-range validation (NUT-11): every value the fixture
+    # reports for a configured nutrient must sit inside that
+    # nutrient's section 1.2 plausible range — the same range
+    # PeerCohort enforces before fencing, so the fixture can never
+    # pin behavior on a value production would discard.
+    ranges = _config_plausible_ranges()
+    if ranges is None:
+        print("  SKIP  plausible-range check (config asset unavailable)")
+    else:
+        out_of_range = 0
+        for food in foods:
+            label = f"fdcId {food.get('fdcId')}"
+            for entry in food.get("foodNutrients", []):
+                nutrient_id = entry.get("nutrientId")
+                if nutrient_id not in ranges:
+                    continue
+                value = entry.get("value", entry.get("amount"))
+                low, high, key = ranges[nutrient_id]
+                if value is None or not (low <= value <= high):
+                    out_of_range += 1
+                    failures.append(
+                        f"chips fixture {label}: {key} value {value} "
+                        f"outside plausible range [{low}, {high}]")
+                    print(f"  FAIL  {label}: {key} value {value} "
+                          f"outside plausible range [{low}, {high}]")
+        if not out_of_range:
+            print("  OK    all configured fixture values inside their "
+                  "plausible ranges")
+
     sodium = sorted(v for v in (_nutrient_value(f, 1093) for f in foods) if v is not None)
     fiber = sorted(v for v in (_nutrient_value(f, 1079) for f in foods) if v is not None)
     median_sodium = statistics.median(sodium) if sodium else None
@@ -501,6 +611,81 @@ def check_chips_fixture():
         print("  OK    fixture shape, coverage, category and medians all match")
 
 
+# Pinned percentile claims from the module docstring: (fdcId,
+# nutrientId, expected raw percentile after the section 4 pipeline).
+EXPECTED_PERCENTILES = [
+    (990001, 1093, 100.0),
+    (990001, 1079, 0.0),
+    (990007, 1093, 50.0),
+    (990007, 1079, 81.82),
+    (990013, 1093, 0.0),
+    (990013, 1079, 100.0),
+    (990012, 1005, 83.33),
+]
+
+
+def _mad_fence(values):
+    """Mirror of PeerCohort.applyMadFence: drop values beyond
+    median +/- 3.5 * 1.4826 * MAD; MAD == 0 disables the fence."""
+    if len(values) < 2:
+        return values
+    ordered = sorted(values)
+    median = statistics.median(ordered)
+    mad = statistics.median(sorted(abs(v - median) for v in ordered))
+    if mad == 0:
+        return values
+    half_width = 3.5 * 1.4826 * mad
+    return [v for v in values if median - half_width <= v <= median + half_width]
+
+
+def check_fixture_percentiles():
+    section("(g) Chips fixture percentile claims (machine-checked, NUT-11)")
+    if not CHIPS_FIXTURE.exists():
+        print("  SKIP  fixture missing (section (e) already failed)")
+        return
+    ranges = _config_plausible_ranges()
+    if ranges is None:
+        print("  SKIP  config asset unavailable; cannot apply plausible ranges")
+        return
+    try:
+        with open(CHIPS_FIXTURE, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  SKIP  fixture does not parse: {exc}")
+        return
+    foods = doc.get("foods") or []
+    for fdc_id, nutrient_id, expected in EXPECTED_PERCENTILES:
+        candidate_value = None
+        peers = []
+        for food in foods:
+            value = _nutrient_value(food, nutrient_id)
+            if food.get("fdcId") == fdc_id:
+                candidate_value = value
+            elif value is not None:
+                peers.append(value)
+        key = ranges.get(nutrient_id, (None, None, str(nutrient_id)))[2]
+        if candidate_value is None:
+            failures.append(
+                f"percentile claim: fdcId {fdc_id} does not report {key}")
+            print(f"  FAIL  fdcId {fdc_id} does not report {key}")
+            continue
+        low, high = ranges[nutrient_id][0], ranges[nutrient_id][1]
+        peers = _mad_fence([v for v in peers if low <= v <= high])
+        below = sum(1 for v in peers if v < candidate_value)
+        equal = sum(1 for v in peers if v == candidate_value)
+        actual = 100.0 * (below + 0.5 * equal) / len(peers) if peers \
+            else float("nan")
+        if abs(actual - expected) <= 0.01:
+            print(f"  OK    fdcId {fdc_id} {key}: {actual:.2f} "
+                  f"(expected {expected}, {len(peers)} fenced peers)")
+        else:
+            failures.append(
+                f"percentile claim: fdcId {fdc_id} {key} computed "
+                f"{actual:.2f}, docstring pins {expected}")
+            print(f"  FAIL  fdcId {fdc_id} {key}: computed {actual:.2f}, "
+                  f"docstring pins {expected}")
+
+
 def main():
     print(f"verify_nutrition.py — repo root: {ROOT}")
     check_json()
@@ -510,6 +695,7 @@ def main():
     check_config_if_present()
     check_nut09_alternates_ui()
     check_chips_fixture()
+    check_fixture_percentiles()
     section("Summary")
     if failures:
         print(f"  RESULT: FAIL ({len(failures)} problem(s))")
