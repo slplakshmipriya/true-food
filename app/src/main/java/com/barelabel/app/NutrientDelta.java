@@ -3,9 +3,11 @@ package com.barelabel.app;
 /**
  * One displayed nutrient's candidate-versus-alternative difference
  * (Contract §6): the per-100 amounts on both sides, each side's
- * favorable percentile (for the paired bar fills; null hides the bar
- * pair), and a deterministic difference badge produced by
- * {@link AlternativeExplainer} (e.g. "61% less", "+2.7 g"). Immutable.
+ * favorable percentile (for the paired bar fills; a null hides that
+ * side's bar only — the other side's bar, and both sides' labels and
+ * values, still show), and a deterministic difference badge produced
+ * by {@link AlternativeExplainer} (e.g. "61% less", "+2.7 g").
+ * Immutable.
  */
 public final class NutrientDelta {
 
@@ -19,9 +21,9 @@ public final class NutrientDelta {
     public final double candidatePer100;
     /** Alternative amount per 100 basis units. */
     public final double alternativePer100;
-    /** Candidate favorable percentile; null -&gt; hide the bar pair. */
+    /** Candidate favorable percentile; null -&gt; hide this side's bar only. */
     public final Double candidateFavorable;
-    /** Alternative favorable percentile; null -&gt; hide the bar pair. */
+    /** Alternative favorable percentile; null -&gt; hide this side's bar only. */
     public final Double alternativeFavorable;
     /** Difference badge, e.g. "61% less", "+2.7 g", "120 mg less". */
     public final String badge;

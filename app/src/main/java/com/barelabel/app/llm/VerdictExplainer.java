@@ -123,6 +123,14 @@ public final class VerdictExplainer {
      * v1 semantics are ingredient-only, and {@code overallScore} may have
      * been blended with a nutrition score the v1 prompt knows nothing
      * about. Returns null on any LLM failure, exactly like v1.
+     *
+     * <p>Rule for downstream readers (NUT-11): the v1/v2 choice keys
+     * off the analysis STATUS (and null analysis/config) — never off
+     * score nullness. A CONCERNING analysis whose nutrition score is
+     * null (e.g. a severe flag with coverage below the minimum) still
+     * takes the v2 path; only the {@code nutrition_score} field inside
+     * the v2 payload is omitted in that case (see
+     * {@link #buildNutritionPayload}).
      */
     public static String explain(ProductResult product, int ingredientScore,
                                  NutritionAnalysis analysis, int overallScore,
