@@ -185,6 +185,19 @@ FDA_ENDPOINT = "api.fda.gov/food/enforcement.json"
 RSS_ENDPOINT = "news.google.com/rss/search"
 FDA_RECALLS_HOST = "www.fda.gov"
 
+# NA-02 review ruling B (2026-11-08), discharged in NA-07: the four
+# standard Xerces/SAX parser-feature URIs used by RssFeedParser to
+# harden the XML parser (XXE protections) are whitelisted in the
+# section (f) URL scan as EXACT strings only. They are parser
+# configuration identifiers, never network egress. Any other
+# non-contract URL must still FAIL section (f).
+PARSER_FEATURE_URIS = frozenset([
+    "http://apache.org/xml/features/disallow-doctype-decl",
+    "http://xml.org/sax/features/external-general-entities",
+    "http://xml.org/sax/features/external-parameter-entities",
+    "http://apache.org/xml/features/nonvalidating/load-external-dtd",
+])
+
 # Section (e) markers: (marker, where it is expected, corpus kind).
 # corpus kinds: "news_pkg" = news package only; "java" = anywhere
 # under app/src/main/java; "main" = anywhere under app/src/main
@@ -683,12 +696,18 @@ def check_scope_guards():
     else:
         print("  OK    no PremiumGates reference in the news package")
     # Guard 2: no http URLs beyond the two contract endpoints and the
-    # FDA recalls page host (Contracts sections 2, 6.4 and 8).
+    # FDA recalls page host (Contracts sections 2, 6.4 and 8), plus
+    # the exact-string parser-feature whitelist below.
     url_pattern = re.compile(r"https?://[^\s\"'<>\)\]]+")
     bad_urls = []
     for path, text in texts.items():
         for url in url_pattern.findall(text):
             cleaned = url.rstrip(".,;")
+            # NA-02 review ruling B (2026-11-08): exact-string
+            # whitelist of the 4 standard parser-feature URIs only
+            # (see PARSER_FEATURE_URIS); no pattern/broad exception.
+            if cleaned in PARSER_FEATURE_URIS:
+                continue
             if cleaned.startswith("https://" + FDA_ENDPOINT) \
                     or cleaned.startswith("https://" + RSS_ENDPOINT) \
                     or cleaned.startswith("https://" + FDA_RECALLS_HOST + "/") \
