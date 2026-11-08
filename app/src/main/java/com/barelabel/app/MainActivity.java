@@ -58,6 +58,10 @@ import com.barelabel.app.model.AlternateSearchResult;
 import com.barelabel.app.model.ProductResult;
 import com.barelabel.app.model.ScannedProduct;
 import com.barelabel.app.network.UsdaApiClient;
+import com.barelabel.app.nutrition.CohortPeer;
+import com.barelabel.app.nutrition.NutritionAnalysis;
+import com.barelabel.app.nutrition.NutritionConfig;
+import com.barelabel.app.nutrition.NutritionConfigLoader;
 import com.barelabel.app.FlaggedIngredientManager;
 import com.barelabel.app.billing.PremiumGates;
 import com.barelabel.app.images.ProductImageResolver;
@@ -73,6 +77,7 @@ import com.barelabel.app.nutrition.OverallScoreCalculator;
 import com.barelabel.app.search.BarcodeSeed;
 import com.barelabel.app.search.CleanAlternateFinder;
 import com.barelabel.app.search.DisambiguationDecider;
+import com.barelabel.app.search.NutritionCohortService;
 import com.barelabel.app.search.IngredientSectionExtractor;
 import com.barelabel.app.search.OcrCorrector;
 import com.barelabel.app.ui.AlternatesCardController;
@@ -149,6 +154,11 @@ public class MainActivity extends AppCompatActivity {
     // Collaborators: USDA network, clean-alternate search, and the alternates card UI.
     private UsdaApiClient usdaApiClient;
     private CleanAlternateFinder alternateFinder;
+    // Nutrition orchestration (Contract §5): config loaded once and cached;
+    // a null config means nutrition is UNAVAILABLE and the flow is unchanged.
+    private NutritionConfig nutritionConfig;
+    private boolean nutritionConfigLoaded;
+    private NutritionCohortService nutritionCohortService;
     private AlternatesCardController alternatesController;
     private FoodAutoCompleteManager autoCompleteManager;
     // USDA record behind the last tapped autocomplete suggestion (0 = none/typed query).
@@ -550,6 +560,59 @@ private void refreshRecents() {
                 token -> GenericWords.isGeneric(this, token));
     }
 
+    /**
+     * Nutrition config (Contract §1), loaded once and cached in a field;
+     * the loader itself also caches process-wide. Null when the config
+     * asset failed validation — nutrition is then UNAVAILABLE and the
+     * ingredient flow is unchanged. Called from the search worker thread.
+     *
+     * <p>The field is latched only after a load attempt that succeeded
+     * or failed validation permanently (the loader latches the latter
+     * itself and reports it via
+     * {@link NutritionConfigLoader#isPermanentlyFailed()}). A transient
+     * asset-read failure — {@code load} returning null without that
+     * latch — leaves {@code nutritionConfigLoaded} unset so the next
+     * search retries instead of disabling nutrition for the process
+     * lifetime. Both lazy-init methods here are {@code synchronized}:
+     * they are called from concurrent search worker threads, and the
+     * monitor makes each check-and-init atomic and safely published
+     * (the nested call is reentrant on the same monitor).
+     */
+    private synchronized NutritionConfig nutritionConfig() {
+        if (!nutritionConfigLoaded) {
+            NutritionConfig loaded = null;
+            try {
+                loaded = NutritionConfigLoader.load(this);
+            } catch (Exception ignored) {
+                loaded = null;
+            }
+            nutritionConfig = loaded;
+            if (loaded != null || NutritionConfigLoader.isPermanentlyFailed()) {
+                nutritionConfigLoaded = true;
+            }
+        }
+        return nutritionConfig;
+    }
+
+    /** Cohort service over the cached config + the USDA page source. */
+    private synchronized NutritionCohortService nutritionCohortService() {
+        if (nutritionCohortService == null) {
+            NutritionCohortService service = new NutritionCohortService(
+                    nutritionConfig(),
+                    NutritionCohortService.usdaPageSource(usdaApiClient));
+            // Cache the service only once the config load has reached a
+            // terminal state (see nutritionConfig()): a service built
+            // over a transiently-null config would permanently pin
+            // nutrition to UNAVAILABLE even if a later load succeeds.
+            // Until then each call returns a fresh, uncached service.
+            if (nutritionConfigLoaded) {
+                nutritionCohortService = service;
+            }
+            return service;
+        }
+        return nutritionCohortService;
+    }
+
     private void search() {
         clearComparePicks();
         // Barcode-initiated searches name an exact product; they always go
@@ -678,19 +741,57 @@ private void refreshRecents() {
                 }
                 if (TextUtils.isEmpty(foodType)) foodType = "Uncategorized";
 
-                // 4. Fetch clean candidates (+ which flagged categories blocked the rest)
-                runOnUiThread(() -> {
-                    if (generation == searchGeneration) {
-                        statusText.setText("Finding clean alternates…");
-                    }
-                });
-                AlternateSearchResult altSearch = alternateFinder.findCleanAlternates(
-                        foodType, apiCategory, categoryIntent, primaryResult, product);
+                // 4. Nutrition analysis of the primary (Contract §5 step 3):
+                //    the cohort is seeded from the search candidates (empty
+                //    on the tapped-suggestion/FDC path, where the category
+                //    top-up supplies the cohort instead) and the analyzer
+                //    stores its result on primaryResult.nutritionAnalysis.
+                //    Everything runs on this background thread; any failure
+                //    degrades nutrition to UNAVAILABLE, never the search.
+                NutritionAnalysis primaryAnalysis = null;
+                try {
+                    List<CohortPeer> seedPeers = NutritionCohortService
+                            .seedPeersFromCandidates(candidates, nutritionConfig());
+                    primaryAnalysis = nutritionCohortService().analyzePrimary(
+                            primaryResult, seedPeers, foodType);
+                } catch (Exception ignored) {
+                    // Best-effort only: a null analysis reads as UNAVAILABLE
+                    // in the sourcing decision below.
+                }
+
+                // 5. Sourcing decision (Contract §5 step 4, PRD §9.1) from
+                //    the ingredient verdict x nutrition status; category
+                //    searches always source. This decision replaces the
+                //    finder's old clean-primary early return.
+                boolean ingredientClean = primaryResult.flagged == null
+                        || primaryResult.flagged.isEmpty();
+                boolean sourceAlternates = NutritionCohortService.shouldSource(
+                        ingredientClean,
+                        primaryAnalysis != null ? primaryAnalysis.status : null,
+                        categoryIntent);
+
+                // 6. Fetch clean candidates (+ which flagged categories
+                //    blocked the rest), only when the decision sources.
+                //    When it does not, an empty result flows to the UI call
+                //    below so the alternates card hides exactly as it did
+                //    for clean products under the old early return.
+                AlternateSearchResult altSearch;
+                if (sourceAlternates) {
+                    runOnUiThread(() -> {
+                        if (generation == searchGeneration) {
+                            statusText.setText("Finding clean alternates…");
+                        }
+                    });
+                    altSearch = alternateFinder.findCleanAlternates(
+                            foodType, apiCategory, categoryIntent, primaryResult, product);
+                } else {
+                    altSearch = new AlternateSearchResult();
+                }
                 List<ProductResult> rawAlternates = altSearch.alternates;
                 alternatesController.setPool(rawAlternates, StringNormalizer.wordTokens(product),
                         categoryIntent, foodType, apiCategory);
 
-                // 5. Send to UI (the controller ranks each stack itself)
+                // 7. Send to UI (the controller ranks each stack itself)
                 final String finalCategory = foodType;
                 final boolean finalCategoryIntent = categoryIntent;
                 final Set<String> finalFlaggedCategories = altSearch.flaggedCategories;

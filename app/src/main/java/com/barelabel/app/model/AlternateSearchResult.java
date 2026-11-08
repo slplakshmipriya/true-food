@@ -1,5 +1,7 @@
 package com.barelabel.app.model;
 
+import com.barelabel.app.nutrition.NutritionAnalysis;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -22,4 +24,18 @@ public class AlternateSearchResult {
     public final List<ProductResult> alternates = new ArrayList<>();
     public final Set<String> flaggedCategories = new LinkedHashSet<>();
     public final Map<String, Integer> filterBlockCounts = new LinkedHashMap<>();
+    /**
+     * Every product the finder scanned, deduped, carrying its parsed
+     * nutrition profile (Contract §5 step 5) — the pool the final peer
+     * cohort is rebuilt from. Populated by the finder (NUT-06); empty
+     * until then and whenever the finder did not run.
+     */
+    public final List<ProductResult> peerPool = new ArrayList<>();
+    /**
+     * The primary's nutrition analysis refreshed against the final
+     * cohort (Contract §5 step 5). Null when the finder did not run —
+     * callers then use the primary's own {@code nutritionAnalysis}
+     * from the step-3 analysis.
+     */
+    public NutritionAnalysis primaryAnalysis;
 }
