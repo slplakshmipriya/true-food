@@ -516,6 +516,72 @@ public class NutritionAnalyzerTest {
         assertEquals(12.5, sodium(a).favorablePercentile, EPS);
     }
 
+    // ------------------------------------------------------------------
+    // Flags use the UNROUNDED percentile (Contract §4.1; pinned NUT-11).
+    // Each case below is constructed so the DISPLAY value (rounded to
+    // the nearest 5 below the preferred peer count) sits on the other
+    // side of the flag threshold from the unrounded value: if flags
+    // ever read the stored/display percentile, these tests flip.
+    // ------------------------------------------------------------------
+
+    @Test
+    public void flags_unroundedBelowThreshold_displayRoundsUpToIt_notFlagged()
+            throws Exception {
+        // 12 peers: 10 below, 2 above -> unrounded raw 83.33, display
+        // 85.0. 700 mg clears the 600 mg floor and is below severe, so
+        // only the percentile gate decides: 83.33 < 85 -> no flag.
+        List<Double> peers = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            peers.add(100.0);
+        }
+        peers.add(800.0);
+        peers.add(900.0);
+        NutritionAnalysis a = NutritionAnalyzer.analyze(
+                candidate("sodium", 700.0),
+                cohort(12, "sodium", new PeerDistribution(peers)), config());
+        assertEquals(85.0, sodium(a).rawPercentile, EPS);
+        assertFalse(sodium(a).flagged);
+        assertEquals("", sodium(a).flagReason);
+    }
+
+    @Test
+    public void flags_unroundedAboveThreshold_flagged() throws Exception {
+        // 12 peers: 10 below, 1 equal, 1 above -> unrounded raw 87.5
+        // (display 90). Above the 85 threshold -> relative_floor flag.
+        List<Double> peers = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            peers.add(100.0);
+        }
+        peers.add(700.0);
+        peers.add(900.0);
+        NutritionAnalysis a = NutritionAnalyzer.analyze(
+                candidate("sodium", 700.0),
+                cohort(12, "sodium", new PeerDistribution(peers)), config());
+        assertEquals(90.0, sodium(a).rawPercentile, EPS);
+        assertTrue(sodium(a).flagged);
+        assertEquals("relative_floor", sodium(a).flagReason);
+    }
+
+    @Test
+    public void flags_lowRule_unroundedAboveCeiling_displayRoundsDownToIt_notFlagged()
+            throws Exception {
+        // Fiber low rule: 12 peers, 2 below the candidate -> unrounded
+        // raw 16.67, display 15.0. 2.0 g is under the 3 g ceiling, so
+        // only the percentile gate decides: 16.67 > 15 -> no flag.
+        List<Double> peers = new ArrayList<>();
+        peers.add(1.0);
+        peers.add(1.5);
+        for (int i = 0; i < 10; i++) {
+            peers.add(5.0);
+        }
+        NutritionAnalysis a = NutritionAnalyzer.analyze(
+                candidate("fiber", 2.0),
+                cohort(12, "fiber", new PeerDistribution(peers)), config());
+        assertEquals(15.0, a.comparisons.get("fiber").rawPercentile, EPS);
+        assertFalse(a.comparisons.get("fiber").flagged);
+        assertEquals("", a.comparisons.get("fiber").flagReason);
+    }
+
     @Test
     public void medianExposedBelowMinPeers_percentilesNull() throws Exception {
         NutritionAnalysis a = NutritionAnalyzer.analyze(

@@ -128,6 +128,30 @@ public class NutritionPanelPartitionTest {
     }
 
     @Test
+    public void strengths_equalPercentiles_configOrderBreaksTies() {
+        // Tie-break (NUT-11): four nutrients tied at favorable 90 plus
+        // one at 95. The sort is stable over the config-ordered input,
+        // so after the 95 the cap slots go to the earliest config-order
+        // ties — c and d lose purely on config order, deterministically.
+        NutritionConfig cfg = config(
+                def("a", "higher_good", true),
+                def("b", "higher_good", true),
+                def("c", "higher_good", true),
+                def("d", "higher_good", true),
+                def("e", "higher_good", true));
+        NutritionAnalysis a = analysis(
+                comp("a", 1.0, 90.0, false),
+                comp("b", 1.0, 90.0, false),
+                comp("c", 1.0, 90.0, false),
+                comp("d", 1.0, 90.0, false),
+                comp("e", 1.0, 95.0, false));
+        NutritionPanelPartition p = NutritionPanelPartition.partition(a, cfg);
+        assertEquals(Arrays.asList("e", "a", "b"), keys(p.strengths));
+        assertEquals(Arrays.asList("c", "d"), keys(p.remaining));
+        assertTrue(p.needsAttention.isEmpty());
+    }
+
+    @Test
     public void strengths_excludeFlaggedEvenWhenFavorableHigh() {
         NutritionConfig cfg = config(
                 def("sodium", "higher_bad", true),
