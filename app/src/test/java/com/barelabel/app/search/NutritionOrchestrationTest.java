@@ -6,6 +6,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
+import com.barelabel.app.model.NutritionProfile;
 import com.barelabel.app.model.ProductResult;
 import com.barelabel.app.nutrition.CohortPeer;
 import com.barelabel.app.nutrition.NutritionAnalysis;
@@ -357,6 +358,40 @@ public class NutritionOrchestrationTest {
     }
 
     @Test
+    public void seedPeers_householdServingCasingAndPunctuation_dedupeToOnePeer()
+            throws Exception {
+        // Regression (NUT-05 review, Minor 1): with no GTIN and no
+        // numeric servingSize, the dedupe key falls back to
+        // householdServingFullText — that component must be normalized
+        // like brand and description, or the same product written with
+        // different household-text casing/punctuation would not dedupe.
+        NutritionConfig config = config(1, 2);
+        JSONObject first = fullFood(11L, "Household Chips", "ACME",
+                "Acme Foods, Inc.", null, 300.0, 0);
+        first.remove("servingSize");
+        first.put("householdServingFullText", "1 Slice");
+        JSONObject second = fullFood(12L, "Household Chips", "ACME",
+                "Acme Foods, Inc.", null, 400.0, 0);
+        second.remove("servingSize");
+        second.put("householdServingFullText", "1 SLICE!");
+
+        List<CohortPeer> seeds = NutritionCohortService.seedPeersFromCandidates(
+                Arrays.asList(first, second), config);
+
+        assertEquals(2, seeds.size());
+        assertEquals(seeds.get(0).dedupeKey, seeds.get(1).dedupeKey);
+
+        FakePageSource source = new FakePageSource();
+        NutritionCohortService service = new NutritionCohortService(config, source);
+        NutritionAnalysis analysis = service.analyzePrimary(
+                midPrimary(config), seeds, CATEGORY);
+
+        // The two records are one product: exactly one peer survives.
+        assertEquals(1, analysis.cohortPeerCount);
+        assertTrue(source.requestedPages.isEmpty());
+    }
+
+    @Test
     public void seedPeers_nullConfigOrFoods_empty() throws Exception {
         assertTrue(NutritionCohortService.seedPeersFromCandidates(
                 null, config(3, 2)).isEmpty());
@@ -522,6 +557,50 @@ public class NutritionOrchestrationTest {
         assertEquals(NutritionStatus.UNAVAILABLE, analysis.status);
         assertSame(analysis, primary.nutritionAnalysis);
         assertTrue(source.requestedPages.isEmpty());
+    }
+
+    @Test
+    public void analyzePrimary_notFoundPrimary_noPagesFetchedAndUnavailable()
+            throws Exception {
+        // Regression (NUT-05 review, Minor 3): a not-found primary can
+        // never produce an analysis, so the top-up must be skipped
+        // entirely — no USDA pages may be requested for it.
+        NutritionConfig config = config(3, 2);
+        ProductResult primary = new ProductResult(false, "Missing Snack",
+                "ACME", "", null);
+        primary.nutritionProfile = null;
+        FakePageSource source = new FakePageSource();
+        source.pages.add(pageOf(fullFood(1L, "Peer One", 300.0)));
+
+        NutritionCohortService service = new NutritionCohortService(config, source);
+        NutritionAnalysis analysis = service.analyzePrimary(
+                primary, Collections.<CohortPeer>emptyList(), CATEGORY);
+
+        assertTrue(source.requestedPages.isEmpty());
+        assertEquals(NutritionStatus.UNAVAILABLE, analysis.status);
+        assertSame(analysis, primary.nutritionAnalysis);
+    }
+
+    @Test
+    public void analyzePrimary_emptyProfilePrimary_noPagesFetchedAndUnavailable()
+            throws Exception {
+        // Regression (NUT-05 review, Minor 3): a found primary whose
+        // profile reports none of the configured nutrients is likewise
+        // provably UNAVAILABLE regardless of cohort — no top-up pages.
+        NutritionConfig config = config(3, 2);
+        ProductResult primary = new ProductResult(true, "Blank Snack",
+                "ACME", "INGREDIENTS", null);
+        primary.nutritionProfile = NutritionProfile.empty(42L);
+        FakePageSource source = new FakePageSource();
+        source.pages.add(pageOf(fullFood(1L, "Peer One", 300.0)));
+
+        NutritionCohortService service = new NutritionCohortService(config, source);
+        NutritionAnalysis analysis = service.analyzePrimary(
+                primary, Collections.<CohortPeer>emptyList(), CATEGORY);
+
+        assertTrue(source.requestedPages.isEmpty());
+        assertEquals(NutritionStatus.UNAVAILABLE, analysis.status);
+        assertSame(analysis, primary.nutritionAnalysis);
     }
 
     @Test

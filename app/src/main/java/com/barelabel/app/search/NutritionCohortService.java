@@ -198,10 +198,20 @@ public class NutritionCohortService {
         if (config == null) {
             return unavailable(category, 0);
         }
-        NutritionProfile profile = primary != null
-                && primary.nutritionProfile != null
+        // Short-circuit (NUT-05 review, Minor 3): a missing or not-found
+        // primary, or a profile reporting none of the configured
+        // nutrients, is UNAVAILABLE regardless of cohort — skip the
+        // top-up page fetches entirely instead of issuing up to
+        // maxCategoryPages fetches whose result cannot change this.
+        if (primary == null || !primary.found) {
+            return unavailable(category, 0);
+        }
+        NutritionProfile profile = primary.nutritionProfile != null
                 ? primary.nutritionProfile
-                : NutritionProfile.empty(primary != null ? primary.fdcId : 0L);
+                : NutritionProfile.empty(primary.fdcId);
+        if (!reportsAnyConfiguredNutrient(profile)) {
+            return unavailable(category, 0);
+        }
 
         List<CohortPeer> pool = new ArrayList<>();
         if (seedPeers != null) {
@@ -230,6 +240,16 @@ public class NutritionCohortService {
             page++;
         }
         return NutritionAnalyzer.analyze(profile, cohort, config);
+    }
+
+    /** True when the profile reports at least one configured nutrient. */
+    private boolean reportsAnyConfiguredNutrient(NutritionProfile profile) {
+        for (NutrientDefinition def : config.byKey.values()) {
+            if (profile.reported(def.key)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** True while any displayed nutrient has &lt; minPeers valid peers. */
@@ -306,7 +326,8 @@ public class NutritionCohortService {
         if (food.has("servingSize") && !food.isNull("servingSize")) {
             key.append(food.optDouble("servingSize", 0));
         } else {
-            key.append(food.optString("householdServingFullText", ""));
+            key.append(StringNormalizer.normalize(
+                    food.optString("householdServingFullText", "")));
         }
         return key.toString();
     }

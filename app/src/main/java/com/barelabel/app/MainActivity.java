@@ -561,24 +561,50 @@ private void refreshRecents() {
      * the loader itself also caches process-wide. Null when the config
      * asset failed validation — nutrition is then UNAVAILABLE and the
      * ingredient flow is unchanged. Called from the search worker thread.
+     *
+     * <p>The field is latched only after a load attempt that succeeded
+     * or failed validation permanently (the loader latches the latter
+     * itself and reports it via
+     * {@link NutritionConfigLoader#isPermanentlyFailed()}). A transient
+     * asset-read failure — {@code load} returning null without that
+     * latch — leaves {@code nutritionConfigLoaded} unset so the next
+     * search retries instead of disabling nutrition for the process
+     * lifetime. Both lazy-init methods here are {@code synchronized}:
+     * they are called from concurrent search worker threads, and the
+     * monitor makes each check-and-init atomic and safely published
+     * (the nested call is reentrant on the same monitor).
      */
-    private NutritionConfig nutritionConfig() {
+    private synchronized NutritionConfig nutritionConfig() {
         if (!nutritionConfigLoaded) {
-            nutritionConfigLoaded = true;
+            NutritionConfig loaded = null;
             try {
-                nutritionConfig = NutritionConfigLoader.load(this);
+                loaded = NutritionConfigLoader.load(this);
             } catch (Exception ignored) {
-                nutritionConfig = null;
+                loaded = null;
+            }
+            nutritionConfig = loaded;
+            if (loaded != null || NutritionConfigLoader.isPermanentlyFailed()) {
+                nutritionConfigLoaded = true;
             }
         }
         return nutritionConfig;
     }
 
     /** Cohort service over the cached config + the USDA page source. */
-    private NutritionCohortService nutritionCohortService() {
+    private synchronized NutritionCohortService nutritionCohortService() {
         if (nutritionCohortService == null) {
-            nutritionCohortService = new NutritionCohortService(nutritionConfig(),
+            NutritionCohortService service = new NutritionCohortService(
+                    nutritionConfig(),
                     NutritionCohortService.usdaPageSource(usdaApiClient));
+            // Cache the service only once the config load has reached a
+            // terminal state (see nutritionConfig()): a service built
+            // over a transiently-null config would permanently pin
+            // nutrition to UNAVAILABLE even if a later load succeeds.
+            // Until then each call returns a fresh, uncached service.
+            if (nutritionConfigLoaded) {
+                nutritionCohortService = service;
+            }
+            return service;
         }
         return nutritionCohortService;
     }

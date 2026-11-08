@@ -87,6 +87,21 @@ public final class NutritionConfigLoader {
         }
     }
 
+    /**
+     * True only once a load attempt has failed validation/parsing — a
+     * permanent failure that {@link #load} latches and never retries.
+     * A transient asset-read failure returns {@code null} from
+     * {@link #load} WITHOUT setting this, so callers that cache the
+     * {@code load} result can use this to tell the two apart: latch
+     * their own cache only on success or when this returns true, and
+     * leave it unset after a transient failure so a later call retries.
+     * (Strictly necessary for NUT-05 review Minor 2: {@code load}'s
+     * {@code null} return alone does not distinguish the two kinds.)
+     */
+    public static synchronized boolean isPermanentlyFailed() {
+        return loadFailed;
+    }
+
     private static String readAsset(Context context) throws IOException {
         InputStream in = context.getApplicationContext().getAssets()
                 .open(ASSET_NAME);
