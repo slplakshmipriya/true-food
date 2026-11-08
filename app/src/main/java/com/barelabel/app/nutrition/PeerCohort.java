@@ -21,13 +21,16 @@ import java.util.Set;
  *   <li>The candidate itself is excluded (FDC ID match when the
  *       candidate's fdcId &gt; 0, plus reference identity — the same
  *       profile instance in the pool is always the candidate).</li>
- *   <li>The pool is deduplicated, first occurrence wins: by FDC ID
- *       (only when &gt; 0; 0 means unknown and never dedupes), then by
- *       the {@link CohortPeer#dedupeKey} the caller precomputed
- *       (GTIN/UPC, else normalized brand+description+serving).</li>
  *   <li>Category must equal the candidate category (case-insensitive,
  *       trimmed) and the per-100 basis must equal the candidate's —
  *       gram and millilitre cohorts are never mixed (PRD §6.3).</li>
+ *   <li>The surviving pool is deduplicated, first occurrence wins: by
+ *       FDC ID (only when &gt; 0; 0 means unknown and never dedupes),
+ *       then by the {@link CohortPeer#dedupeKey} the caller precomputed
+ *       (GTIN/UPC, else normalized brand+description+serving). Only
+ *       entries that pass the checks above register a dedupe identity,
+ *       so an ineligible entry never blocks a later eligible twin with
+ *       the same FDC ID or key.</li>
  *   <li>Per nutrient, reported values outside the definition's
  *       plausible range are dropped, then a median/MAD fence removes
  *       values beyond median ± 3.5 × 1.4826 × MAD. When MAD is 0 the
@@ -100,7 +103,17 @@ public final class PeerCohort {
                 if (candidateFdcId > 0 && profile.fdcId == candidateFdcId) {
                     continue;
                 }
-                // (2) Dedupe, first occurrence wins: FDC ID, then key.
+                // (2) Category and basis must match the candidate's.
+                if (!normalizeCategory(peer.category).equals(wantedCategory)) {
+                    continue;
+                }
+                if (!candidateBasis.equals(profile.basis)) {
+                    continue;
+                }
+                // (3) Dedupe, first surviving occurrence wins: FDC ID,
+                // then key. Registration happens only here, after the
+                // eligibility checks, so an entry dropped above never
+                // consumes an identity.
                 if (profile.fdcId > 0 && seenFdcIds.contains(profile.fdcId)) {
                     continue;
                 }
@@ -114,13 +127,6 @@ public final class PeerCohort {
                 }
                 if (hasKey) {
                     seenKeys.add(key);
-                }
-                // (3) Category and basis must match the candidate's.
-                if (!normalizeCategory(peer.category).equals(wantedCategory)) {
-                    continue;
-                }
-                if (!candidateBasis.equals(profile.basis)) {
-                    continue;
                 }
                 survivors.add(profile);
             }

@@ -347,6 +347,56 @@ public class PeerCohortTest {
     }
 
     // ------------------------------------------------------------------
+    // Dedupe registration happens only for entries that survive the
+    // category and basis checks: an ineligible first entry must not
+    // consume an fdcId/key and block a later eligible twin (review
+    // regression, NUT-03).
+    // ------------------------------------------------------------------
+
+    @Test
+    public void dedupeRegistration_afterCategoryCheck_fdcTwinSurvives()
+            throws Exception {
+        List<CohortPeer> pool = Arrays.asList(
+                peer(profile(111L, "g", "sodium", 300.0), "gtin:x", "Cookies"),
+                peer(profile(111L, "g", "sodium", 400.0), "gtin:y", "Snacks"));
+        PeerCohort cohort = PeerCohort.build(
+                snackCandidate(), "Snacks", pool, config());
+        assertEquals(1, cohort.peerCount);
+        assertEquals(Collections.singletonList(400.0),
+                cohort.byNutrient.get("sodium").values);
+    }
+
+    @Test
+    public void dedupeRegistration_afterCategoryCheck_keyTwinSurvives()
+            throws Exception {
+        List<CohortPeer> pool = Arrays.asList(
+                peer(profile(201L, "g", "sodium", 300.0),
+                        "gtin:shared", "Cookies"),
+                peer(profile(202L, "g", "sodium", 400.0),
+                        "gtin:shared", "Snacks"));
+        PeerCohort cohort = PeerCohort.build(
+                snackCandidate(), "Snacks", pool, config());
+        assertEquals(1, cohort.peerCount);
+        assertEquals(Collections.singletonList(400.0),
+                cohort.byNutrient.get("sodium").values);
+    }
+
+    @Test
+    public void dedupeRegistration_afterBasisCheck_gramTwinSurvives()
+            throws Exception {
+        List<CohortPeer> pool = Arrays.asList(
+                peer(profile(301L, "ml", "sodium", 300.0),
+                        "gtin:shared2", "Snacks"),
+                peer(profile(302L, "g", "sodium", 400.0),
+                        "gtin:shared2", "Snacks"));
+        PeerCohort cohort = PeerCohort.build(
+                snackCandidate(), "Snacks", pool, config());
+        assertEquals(1, cohort.peerCount);
+        assertEquals(Collections.singletonList(400.0),
+                cohort.byNutrient.get("sodium").values);
+    }
+
+    // ------------------------------------------------------------------
     // Candidate exclusion (PRD §6.1: never in its own denominator)
     // ------------------------------------------------------------------
 
@@ -397,6 +447,24 @@ public class PeerCohortTest {
                 cohort.byNutrient.get("protein").values);
         // Sodium plausible range is 0-5000 mg: 15,300 is dropped.
         assertEquals(Arrays.asList(300.0, 400.0),
+                cohort.byNutrient.get("sodium").values);
+    }
+
+    @Test
+    public void plausibleRange_boundaryValues_minAndMaxKept()
+            throws Exception {
+        // Bounds are inclusive: exactly plausibleMin and exactly
+        // plausibleMax are kept (protein 0-100 g, sodium 0-5000 mg).
+        List<CohortPeer> pool = Arrays.asList(
+                peer(profile(1L, "g", "protein", 0.0, "sodium", 0.0),
+                        "gtin:1", "Snacks"),
+                peer(profile(2L, "g", "protein", 100.0, "sodium", 5000.0),
+                        "gtin:2", "Snacks"));
+        PeerCohort cohort = PeerCohort.build(
+                snackCandidate(), "Snacks", pool, config());
+        assertEquals(Arrays.asList(0.0, 100.0),
+                cohort.byNutrient.get("protein").values);
+        assertEquals(Arrays.asList(0.0, 5000.0),
                 cohort.byNutrient.get("sodium").values);
     }
 
