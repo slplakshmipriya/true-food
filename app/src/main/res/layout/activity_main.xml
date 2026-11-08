@@ -358,13 +358,6 @@
                     android:src="@drawable/ic_share" />
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/verdictText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textSize="30sp"
-                android:textStyle="bold" />
-
             <!-- LLM verdict explanation (premium): in-card narrative replacing
                  the per-row expandable rule-based reasons -->
             <TextView
@@ -379,6 +372,66 @@
                 android:textStyle="italic"
                 android:visibility="gone" />
 
+            <!-- Score strip: ingredient and nutrition component scores.
+                 Values are bound later; no weights are shown here. -->
+            <LinearLayout
+                android:id="@+id/scoreStrip"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Ingredient Score"
+                        android:textColor="#6B7280"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/ingredientScoreText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="—"
+                        android:textColor="#111827"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Nutrition Score"
+                        android:textColor="#6B7280"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/nutritionScoreText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="—"
+                        android:textColor="#111827"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+            </LinearLayout>
+
             <com.google.android.flexbox.FlexboxLayout
                 android:id="@+id/verdictChipsContainer"
                 android:layout_width="match_parent"
@@ -388,33 +441,140 @@
                 app:justifyContent="flex_start" />
 
             <TextView
-                android:id="@+id/flaggedTitle"
+                android:id="@+id/verdictText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="30sp"
+                android:textStyle="bold" />
+
+            <!-- Verdict bubbles: toggles for the detail panels below.
+                 Backgrounds and text are bound later. -->
+            <LinearLayout
+                android:id="@+id/verdictBubblesRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:text="Flagged Ingredients"
-                android:textColor="#991B1B"
-                android:textSize="15sp"
-                android:textStyle="bold" />
+                android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/flaggedText"
+                <Button
+                    android:id="@+id/ingredientsVerdictBubble"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/chip_clean_background"
+                    android:contentDescription="Ingredients verdict, collapsed"
+                    android:paddingStart="10dp"
+                    android:paddingTop="5dp"
+                    android:paddingEnd="10dp"
+                    android:paddingBottom="5dp"
+                    android:text="Ingredients · —"
+                    android:textAllCaps="false"
+                    android:textColor="#166534"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/nutritionVerdictBubble"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/chip_dirty_background"
+                    android:contentDescription="Nutrition verdict, collapsed"
+                    android:paddingStart="10dp"
+                    android:paddingTop="5dp"
+                    android:paddingEnd="10dp"
+                    android:paddingBottom="5dp"
+                    android:text="Nutrition · —"
+                    android:textAllCaps="false"
+                    android:textColor="#991B1B"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Detail slot: ingredients panel (existing flagged views). -->
+            <LinearLayout
+                android:id="@+id/ingredientDetailPanel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textColor="#7F1D1D"
-                android:textSize="14sp"
-                android:visibility="gone" />
+                android:orientation="vertical"
+                android:visibility="gone">
 
-            <!-- Compact flagged-ingredient chips (premium) or full-width
-                 expandable rows (free); LLM explanation replaces reasons -->
-            <com.google.android.flexbox.FlexboxLayout
-                android:id="@+id/flaggedList"
+                <TextView
+                    android:id="@+id/flaggedTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Flagged Ingredients"
+                    android:textColor="#991B1B"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/flaggedText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="#7F1D1D"
+                    android:textSize="14sp"
+                    android:visibility="gone" />
+
+                <!-- Compact flagged-ingredient chips (premium) or full-width
+                     expandable rows (free); LLM explanation replaces reasons -->
+                <com.google.android.flexbox.FlexboxLayout
+                    android:id="@+id/flaggedList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:flexWrap="wrap"
+                    app:alignItems="flex_start"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <!-- Detail slot: nutrition panel (populated later). -->
+            <LinearLayout
+                android:id="@+id/nutritionDetailPanel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:flexWrap="wrap"
-                app:alignItems="flex_start"
-                android:visibility="gone" />
+                android:layout_marginTop="12dp"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/nutritionPanelTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Nutrition compared with similar products"
+                    android:textColor="#111827"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:id="@+id/nutritionOutstandingContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+                <Button
+                    android:id="@+id/toggleRemainingNutrients"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Show remaining nutrients"
+                    android:textSize="13sp" />
+
+                <LinearLayout
+                    android:id="@+id/nutritionRemainingContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/nutritionPanelFooter"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textColor="#6B7280"
+                    android:textSize="11sp" />
+            </LinearLayout>
 
             <Button
                 android:id="@+id/walmartButton"

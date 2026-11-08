@@ -122,6 +122,10 @@ MARKERS = [
     ("AlternativeExplainer", "alternative explanations (Contract 6)"),
     ("NutritionPanelController", "nutrition panel UI (Contract 7.1)"),
     ("EXPLAIN_NUTRITION_SYSTEM", "LLM nutrition prompt (Contract 8)"),
+    ("scoreStrip", "verdict card score strip layout id (Contract 7.1, NUT-08)"),
+    ("verdictBubblesRow", "verdict card bubbles row layout id (Contract 7.1, NUT-08)"),
+    ("ingredientDetailPanel", "verdict card ingredient detail panel layout id (Contract 7.1, NUT-08)"),
+    ("nutritionDetailPanel", "verdict card nutrition detail panel layout id (Contract 7.1, NUT-08)"),
 ]
 
 # Strings that would mean blend weights are rendered in a layout (Contract 9).
