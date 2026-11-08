@@ -1,6 +1,7 @@
 package com.barelabel.app.model;
 
 import com.barelabel.app.FlaggedIngredientManager;
+import com.barelabel.app.nutrition.NutritionAnalysis;
 
 import java.util.HashSet;
 import java.util.List;
@@ -28,9 +29,9 @@ public class ProductResult {
      * (e.g. products built outside the USDA path).
      */
     public NutritionProfile nutritionProfile;
-    // Note: the NutritionAnalysis field from Contract §2 is added by
-    // NUT-04 together with its real type; it is deliberately not declared
-    // here yet.
+    // Transient nutrition analysis (Contract §2), set by the search
+    // orchestration; null until analyzed.
+    public NutritionAnalysis nutritionAnalysis;
     public MatchQuality matchQuality;
     public FlaggedIngredientManager.MatchResult matchResult;
     public Set<String> flagged = new HashSet<>();
