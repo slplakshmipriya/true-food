@@ -63,7 +63,10 @@ public final class NutritionProfile {
      */
     public Double perServing(String key) {
         Double value = key == null ? null : per100.get(key);
-        if (value == null || servingSize == null) {
+        // The public constructor means this guard must hold on its own:
+        // a zero, negative, or non-finite serving size is unusable (§2.1).
+        if (value == null || servingSize == null || servingSize <= 0
+                || !Double.isFinite(servingSize)) {
             return null;
         }
         String normalized = normalizeServingUnit(servingUnit);

@@ -45,7 +45,9 @@ public final class UsdaNutritionParser {
             Double servingSize = null;
             if (food.has("servingSize") && !food.isNull("servingSize")) {
                 double size = food.optDouble("servingSize", Double.NaN);
-                if (!Double.isNaN(size)) {
+                // Contract §2: servingSize is null when unusable — zero,
+                // negative, or non-finite sizes cannot scale per-100 values.
+                if (Double.isFinite(size) && size > 0) {
                     servingSize = size;
                 }
             }

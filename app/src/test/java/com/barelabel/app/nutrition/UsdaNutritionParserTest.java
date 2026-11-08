@@ -16,6 +16,8 @@ import org.junit.Test;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * UsdaNutritionParser / NutritionProfile: Contract §2, §2.1, §3.
@@ -410,6 +412,17 @@ public class UsdaNutritionParserTest {
     }
 
     @Test
+    public void duplicateEntries_flatThenNested_flatWins() throws Exception {
+        JSONObject food = foodWith(nutrients(
+                flatEntry(1093, 300, "MG"),
+                nestedEntry(1093, 900, "MG")));
+        NutritionProfile profile =
+                UsdaNutritionParser.parse(food, config());
+        assertEquals(300.0, profile.per100.get("sodium").doubleValue(), EPS);
+        assertEquals(1, profile.per100.size());
+    }
+
+    @Test
     public void missingNutrients_stayAbsent_neverZero() throws Exception {
         JSONObject food = foodWith(nutrients(flatEntry(1003, 3.57, "G")));
         NutritionProfile profile =
@@ -510,6 +523,45 @@ public class UsdaNutritionParserTest {
         assertNull(profile.perServing("protein"));
     }
 
+    @Test
+    public void servingSizeZero_isUnusable_servingSizeAndPerServingNull()
+            throws Exception {
+        JSONObject food = foodWith(nutrients(flatEntry(1003, 10.0, "G")));
+        food.put("servingSize", 0);
+        food.put("servingSizeUnit", "g");
+        NutritionProfile profile =
+                UsdaNutritionParser.parse(food, config());
+        assertNull(profile.servingSize);
+        assertNull(profile.perServing("protein"));
+        // The per-100 value itself is unaffected.
+        assertEquals(10.0, profile.per100.get("protein").doubleValue(), EPS);
+    }
+
+    @Test
+    public void servingSizeNegative_isUnusable_servingSizeAndPerServingNull()
+            throws Exception {
+        JSONObject food = foodWith(nutrients(flatEntry(1003, 10.0, "G")));
+        food.put("servingSize", -28);
+        food.put("servingSizeUnit", "g");
+        NutritionProfile profile =
+                UsdaNutritionParser.parse(food, config());
+        assertNull(profile.servingSize);
+        assertNull(profile.perServing("protein"));
+        assertEquals(10.0, profile.per100.get("protein").doubleValue(), EPS);
+    }
+
+    @Test
+    public void servingSizePresent_emptyServingUnit_perServingNull()
+            throws Exception {
+        JSONObject food = foodWith(nutrients(flatEntry(1003, 10.0, "G")));
+        food.put("servingSize", 28);
+        food.put("servingSizeUnit", "");
+        NutritionProfile profile =
+                UsdaNutritionParser.parse(food, config());
+        assertEquals(28.0, profile.servingSize.doubleValue(), EPS);
+        assertNull(profile.perServing("protein"));
+    }
+
     // ------------------------------------------------------------------
     // Malformed input (§3: never throws)
     // ------------------------------------------------------------------
@@ -583,9 +635,50 @@ public class UsdaNutritionParserTest {
         assertTrue(profile.per100.isEmpty());
     }
 
+    @Test
+    public void malformed_nullConfig_emptyProfileNoException()
+            throws Exception {
+        JSONObject food = foodWith(nutrients(flatEntry(1003, 3.57, "G")));
+        NutritionProfile profile = UsdaNutritionParser.parse(food, null);
+        assertNotNull(profile);
+        assertEquals(424242L, profile.fdcId);
+        assertTrue(profile.per100.isEmpty());
+    }
+
     // ------------------------------------------------------------------
     // Profile invariants (§2)
     // ------------------------------------------------------------------
+
+    @Test
+    public void directProfile_servingSizeZero_perServingNull() {
+        Map<String, Double> per100 = new LinkedHashMap<>();
+        per100.put("protein", 10.0);
+        NutritionProfile profile = new NutritionProfile(
+                1L, "g", 0.0, "g", "", per100);
+        assertNull(profile.perServing("protein"));
+    }
+
+    @Test
+    public void directProfile_basisMismatch_gBasisMlUnit_perServingNull() {
+        Map<String, Double> per100 = new LinkedHashMap<>();
+        per100.put("protein", 10.0);
+        NutritionProfile profile = new NutritionProfile(
+                1L, "g", 240.0, "ml", "", per100);
+        assertNull(profile.perServing("protein"));
+    }
+
+    @Test
+    public void directProfile_defensiveCopy_sourceMutationDoesNotChange() {
+        Map<String, Double> per100 = new LinkedHashMap<>();
+        per100.put("protein", 3.57);
+        NutritionProfile profile = new NutritionProfile(
+                1L, "g", 28.0, "g", "", per100);
+        per100.put("protein", 99.0);
+        per100.put("sodium", 1.0);
+        assertEquals(3.57, profile.per100.get("protein").doubleValue(), EPS);
+        assertFalse(profile.per100.containsKey("sodium"));
+        assertEquals(1, profile.per100.size());
+    }
 
     @Test
     public void per100Map_isUnmodifiable() throws Exception {

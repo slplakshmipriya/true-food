@@ -358,9 +358,18 @@ public class UsdaApiClient {
         } catch (Exception ignored) {
             // Config access must never break the product build.
         }
-        result.nutritionProfile = nutritionConfig != null
-                ? UsdaNutritionParser.parse(food, nutritionConfig)
-                : NutritionProfile.empty(result.fdcId);
+        if (nutritionConfig != null) {
+            try {
+                result.nutritionProfile =
+                        UsdaNutritionParser.parse(food, nutritionConfig);
+            } catch (Exception ignored) {
+                // A parser failure must never fail the search.
+                result.nutritionProfile =
+                        NutritionProfile.empty(result.fdcId);
+            }
+        } else {
+            result.nutritionProfile = NutritionProfile.empty(result.fdcId);
+        }
         return result;
     }
 
