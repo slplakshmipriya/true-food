@@ -170,7 +170,9 @@ public class AlternativeExplainerTest {
                 "gamma item", "alpha item", "beta item");
         NutritionAnalysis candA = analysis(NutritionStatus.SAFE, 70,
                 Collections.<String>emptyList());
-        ProductResult alt = product("Alt", "RICE, SALT");
+        // Alt has the same ingredient count as the candidate (3), so no
+        // preference fact fires and the removal reason stands alone.
+        ProductResult alt = product("Alt", "RICE, SALT, WATER");
         NutritionAnalysis altA = analysis(NutritionStatus.SAFE, 70,
                 Collections.<String>emptyList());
         List<String> reasons = AlternativeExplainer.reasons(
