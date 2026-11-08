@@ -159,6 +159,27 @@ public class NutritionCohortService {
     // Primary analysis
     // ------------------------------------------------------------------
 
+    /**
+     * The outcome of a primary analysis: the analysis itself plus the
+     * cohort peers actually collected for it (seed peers plus every
+     * top-up page peer, before cohort dedupe/filtering). Contract §5
+     * step 5 rebuilds the final cohort from exactly these peers
+     * extended with the finder's scanned pool, so the step-3 pool must
+     * be handed over, not rebuilt from a second fetch.
+     */
+    public static final class CohortResult {
+        public final NutritionAnalysis analysis;
+        /** Seeds + top-up peers collected for the primary's cohort. */
+        public final List<CohortPeer> peers;
+
+        public CohortResult(NutritionAnalysis analysis, List<CohortPeer> peers) {
+            this.analysis = analysis;
+            this.peers = Collections.unmodifiableList(peers == null
+                    ? new ArrayList<CohortPeer>()
+                    : new ArrayList<>(peers));
+        }
+    }
+
     /** Analyzes the primary using the constructor's page source. */
     public NutritionAnalysis analyzePrimary(ProductResult primary,
                                             List<CohortPeer> seedPeers,
@@ -178,25 +199,50 @@ public class NutritionCohortService {
                                             List<CohortPeer> seedPeers,
                                             String category,
                                             FoodsPageSource source) {
-        NutritionAnalysis analysis;
-        try {
-            analysis = analyze(primary, seedPeers, category, source);
-        } catch (Exception e) {
-            // Analysis must never fail the search (Contract §5).
-            analysis = unavailable(category, 0);
-        }
-        if (primary != null) {
-            primary.nutritionAnalysis = analysis;
-        }
-        return analysis;
+        return analyzePrimaryWithCohort(primary, seedPeers, category, source)
+                .analysis;
     }
 
-    private NutritionAnalysis analyze(ProductResult primary,
-                                      List<CohortPeer> seedPeers,
-                                      String category,
-                                      FoodsPageSource source) {
+    /** Like {@link #analyzePrimary} but also returns the cohort peers. */
+    public CohortResult analyzePrimaryWithCohort(ProductResult primary,
+                                                 List<CohortPeer> seedPeers,
+                                                 String category) {
+        return analyzePrimaryWithCohort(primary, seedPeers, category, pageSource);
+    }
+
+    /**
+     * {@link #analyzePrimary} plus the collected cohort peers
+     * (seeds + top-up) for the step-5 final-cohort rebuild. Never
+     * throws: any failure yields an UNAVAILABLE analysis (still stored
+     * on the primary) and whatever peers were supplied as seeds.
+     */
+    public CohortResult analyzePrimaryWithCohort(ProductResult primary,
+                                                 List<CohortPeer> seedPeers,
+                                                 String category,
+                                                 FoodsPageSource source) {
+        CohortResult result;
+        try {
+            result = analyze(primary, seedPeers, category, source);
+        } catch (Exception e) {
+            // Analysis must never fail the search (Contract §5).
+            result = new CohortResult(unavailable(category, 0),
+                    seedPeers != null ? seedPeers
+                            : Collections.<CohortPeer>emptyList());
+        }
+        if (primary != null) {
+            primary.nutritionAnalysis = result.analysis;
+        }
+        return result;
+    }
+
+    private CohortResult analyze(ProductResult primary,
+                                 List<CohortPeer> seedPeers,
+                                 String category,
+                                 FoodsPageSource source) {
+        List<CohortPeer> seeds = seedPeers != null
+                ? seedPeers : Collections.<CohortPeer>emptyList();
         if (config == null) {
-            return unavailable(category, 0);
+            return new CohortResult(unavailable(category, 0), seeds);
         }
         // Short-circuit (NUT-05 review, Minor 3): a missing or not-found
         // primary, or a profile reporting none of the configured
@@ -204,19 +250,16 @@ public class NutritionCohortService {
         // top-up page fetches entirely instead of issuing up to
         // maxCategoryPages fetches whose result cannot change this.
         if (primary == null || !primary.found) {
-            return unavailable(category, 0);
+            return new CohortResult(unavailable(category, 0), seeds);
         }
         NutritionProfile profile = primary.nutritionProfile != null
                 ? primary.nutritionProfile
                 : NutritionProfile.empty(primary.fdcId);
         if (!reportsAnyConfiguredNutrient(profile)) {
-            return unavailable(category, 0);
+            return new CohortResult(unavailable(category, 0), seeds);
         }
 
-        List<CohortPeer> pool = new ArrayList<>();
-        if (seedPeers != null) {
-            pool.addAll(seedPeers);
-        }
+        List<CohortPeer> pool = new ArrayList<>(seeds);
         PeerCohort cohort = PeerCohort.build(profile, category, pool, config);
 
         // Top-up (Contract §5 step 3): fetch same-category pages until
@@ -239,7 +282,8 @@ public class NutritionCohortService {
             cohort = PeerCohort.build(profile, category, pool, config);
             page++;
         }
-        return NutritionAnalyzer.analyze(profile, cohort, config);
+        return new CohortResult(
+                NutritionAnalyzer.analyze(profile, cohort, config), pool);
     }
 
     /** True when the profile reports at least one configured nutrient. */
