@@ -1,5 +1,12 @@
 package com.barelabel.app.llm;
 
+import com.barelabel.app.model.ProductResult;
+import com.barelabel.app.nutrition.NutrientComparison;
+import com.barelabel.app.nutrition.NutrientDefinition;
+import com.barelabel.app.nutrition.NutritionAnalysis;
+import com.barelabel.app.nutrition.NutritionConfig;
+import com.barelabel.app.nutrition.NutritionStatus;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -98,6 +105,260 @@ public final class VerdictExplainer {
             first = false;
             sb.append('"').append(GroqClient.jsonEscape(s)).append('"');
         }
+    }
+
+    // ---- Nutrition-aware explanation (Contract §8) --------------------
+
+    /**
+     * Nutrition-aware explanation: narrates both deterministic verdicts
+     * (ingredient CLEAN/DIRTY and nutrition SAFE/CONCERNING) and the
+     * blended overall score, using {@link LlmPrompts#EXPLAIN_NUTRITION_SYSTEM}
+     * at temperature 0.3 with max tokens 220.
+     *
+     * <p>Fallback: when {@code analysis} is null, its status is
+     * {@link NutritionStatus#UNAVAILABLE}, or {@code config} is null,
+     * this delegates to the v1 {@link #explain(boolean, int, List,
+     * String, List, List, String)} path. The v1 {@code cleanScore}
+     * parameter receives the INGREDIENT score (not {@code overallScore}):
+     * v1 semantics are ingredient-only, and {@code overallScore} may have
+     * been blended with a nutrition score the v1 prompt knows nothing
+     * about. Returns null on any LLM failure, exactly like v1.
+     */
+    public static String explain(ProductResult product, int ingredientScore,
+                                 NutritionAnalysis analysis, int overallScore,
+                                 List<Flag> flagged, String ingredients,
+                                 List<String> filters,
+                                 List<String> superiorIngredients,
+                                 String allergenAdvice,
+                                 NutritionConfig config) {
+        if (analysis == null
+                || analysis.status == NutritionStatus.UNAVAILABLE
+                || config == null) {
+            return explain(isClean(product, flagged), ingredientScore,
+                    flagged, ingredients, filters, superiorIngredients,
+                    allergenAdvice);
+        }
+        String payload = buildNutritionPayload(product, ingredientScore,
+                analysis, overallScore, flagged, ingredients, filters,
+                superiorIngredients, allergenAdvice, config);
+        String out = GroqClient.chat(
+                LlmPrompts.EXPLAIN_NUTRITION_SYSTEM, payload, 0.3, 220);
+        return (out == null || out.trim().isEmpty()) ? null : out.trim();
+    }
+
+    /**
+     * Builds the JSON user message for the nutrition-aware explanation
+     * (Contract §8 payload v2). Package-visible for JVM tests.
+     *
+     * <p>The ingredient verdict is CLEAN only when neither the product's
+     * {@code flagged} set nor the {@code flagged} list carries an entry.
+     * Percentile and peer values come from {@link NutrientComparison}
+     * (display-rounded values, as in the contract example): a null
+     * {@code peer_median} or percentile is omitted rather than emitted as
+     * JSON null, and when both percentiles are null (e.g. a severe flag
+     * without peers) {@code peer_count} is omitted too — a flagged
+     * nutrient still always carries its amount and {@code flag_reason}.
+     * {@code nutrient_highlights} holds the non-flagged comparisons whose
+     * favorable percentile is ≤ 25 or ≥ 75, in config order, capped at 4,
+     * and the key is omitted entirely when none qualify. A null
+     * {@code nutritionScore} omits {@code nutrition_score}.
+     *
+     * <p>Fallback: when {@code analysis} is null, its status is
+     * UNAVAILABLE, or {@code config} is null, this returns the v1 payload
+     * string from {@link #buildPayload} with the ingredient score as its
+     * {@code clean_score} — the same fallback {@link #explain} uses.
+     */
+    static String buildNutritionPayload(ProductResult product,
+                                        int ingredientScore,
+                                        NutritionAnalysis analysis,
+                                        int overallScore,
+                                        List<Flag> flagged,
+                                        String ingredients,
+                                        List<String> filters,
+                                        List<String> superiorIngredients,
+                                        String allergenAdvice,
+                                        NutritionConfig config) {
+        boolean clean = isClean(product, flagged);
+        if (analysis == null
+                || analysis.status == NutritionStatus.UNAVAILABLE
+                || config == null) {
+            return buildPayload(clean, ingredientScore, flagged,
+                    ingredients, filters, superiorIngredients,
+                    allergenAdvice);
+        }
+        StringBuilder sb = new StringBuilder(1024);
+        sb.append("{\"ingredient_verdict\":\"")
+                .append(clean ? "CLEAN" : "DIRTY")
+                .append("\",\"ingredient_score\":").append(ingredientScore)
+                .append(",\"nutrition_status\":\"")
+                .append(analysis.status.name()).append("\"");
+        if (analysis.nutritionScore != null) {
+            sb.append(",\"nutrition_score\":").append(analysis.nutritionScore);
+        }
+        sb.append(",\"overall_score\":").append(overallScore)
+                .append(",\"blend\":{\"ingredient_weight\":")
+                .append(formatNumber(config.ingredientWeight))
+                .append(",\"nutrition_weight\":")
+                .append(formatNumber(config.nutritionWeight))
+                .append("},\"flagged\":[");
+        appendFlags(sb, flagged);
+        sb.append("],\"flagged_nutrients\":[");
+        boolean firstNutrient = true;
+        for (String key : analysis.flaggedNutrients) {
+            if (key == null) {
+                continue;
+            }
+            NutrientComparison comparison = analysis.comparisons.get(key);
+            if (comparison == null) {
+                continue;
+            }
+            if (!firstNutrient) {
+                sb.append(',');
+            }
+            firstNutrient = false;
+            appendNutrient(sb, comparison, config, true);
+        }
+        sb.append(']');
+        List<NutrientComparison> highlights = new ArrayList<>();
+        for (NutrientComparison comparison : analysis.comparisons.values()) {
+            if (comparison == null || comparison.flagged
+                    || analysis.flaggedNutrients.contains(comparison.key)
+                    || comparison.favorablePercentile == null) {
+                continue;
+            }
+            double favorable = comparison.favorablePercentile;
+            if (favorable <= 25.0 || favorable >= 75.0) {
+                highlights.add(comparison);
+                if (highlights.size() == 4) {
+                    break;
+                }
+            }
+        }
+        if (!highlights.isEmpty()) {
+            sb.append(",\"nutrient_highlights\":[");
+            boolean firstHighlight = true;
+            for (NutrientComparison comparison : highlights) {
+                if (!firstHighlight) {
+                    sb.append(',');
+                }
+                firstHighlight = false;
+                appendNutrient(sb, comparison, config, false);
+            }
+            sb.append(']');
+        }
+        sb.append(",\"ingredients\":\"")
+                .append(GroqClient.jsonEscape(
+                        ingredients == null ? "" : ingredients))
+                .append("\",\"filters\":[");
+        appendStrings(sb, filters);
+        sb.append("],\"superior_ingredients\":[");
+        appendStrings(sb, superiorIngredients);
+        sb.append("],\"allergen_advice\":\"")
+                .append(GroqClient.jsonEscape(
+                        allergenAdvice == null ? "" : allergenAdvice))
+                .append("\"}");
+        return sb.toString();
+    }
+
+    /**
+     * CLEAN only when neither the product's flagged-ingredient set nor
+     * the flagged list carries a (non-null) entry; a null product or
+     * null set/list counts as empty on that side.
+     */
+    private static boolean isClean(ProductResult product,
+                                   List<Flag> flagged) {
+        if (product != null && product.flagged != null
+                && !product.flagged.isEmpty()) {
+            return false;
+        }
+        if (flagged != null) {
+            for (Flag f : flagged) {
+                if (f != null) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /** The v1 flagged-ingredient array, shared by the v2 payload. */
+    private static void appendFlags(StringBuilder sb, List<Flag> flagged) {
+        if (flagged == null) {
+            return;
+        }
+        boolean first = true;
+        for (Flag f : flagged) {
+            if (f == null) {
+                continue;
+            }
+            if (!first) {
+                sb.append(',');
+            }
+            first = false;
+            sb.append("{\"ingredient\":\"")
+                    .append(GroqClient.jsonEscape(f.ingredient))
+                    .append("\",\"category\":\"")
+                    .append(GroqClient.jsonEscape(f.category))
+                    .append("\"}");
+        }
+    }
+
+    /**
+     * One flagged-nutrient or highlight entry (Contract §8 shape). Null
+     * amount/percentile/peer values are omitted, never emitted as JSON
+     * null; {@code peer_count} is emitted only alongside a percentile.
+     */
+    private static void appendNutrient(StringBuilder sb,
+                                       NutrientComparison comparison,
+                                       NutritionConfig config,
+                                       boolean includeFlagReason) {
+        NutrientDefinition def = config.byKey.get(comparison.key);
+        String label = def != null ? def.label : comparison.key;
+        String unit = def != null ? def.unit : "";
+        sb.append("{\"key\":\"")
+                .append(GroqClient.jsonEscape(comparison.key))
+                .append("\",\"label\":\"")
+                .append(GroqClient.jsonEscape(label)).append("\"");
+        if (comparison.per100 != null) {
+            sb.append(",\"amount_per_100\":")
+                    .append(formatNumber(comparison.per100));
+        }
+        sb.append(",\"unit\":\"").append(GroqClient.jsonEscape(unit))
+                .append("\"");
+        if (comparison.rawPercentile != null) {
+            sb.append(",\"raw_percentile\":")
+                    .append(formatNumber(comparison.rawPercentile));
+        }
+        if (comparison.favorablePercentile != null) {
+            sb.append(",\"favorable_percentile\":")
+                    .append(formatNumber(comparison.favorablePercentile));
+        }
+        if (comparison.rawPercentile != null
+                || comparison.favorablePercentile != null) {
+            sb.append(",\"peer_count\":").append(comparison.peerCount);
+        }
+        if (comparison.peerMedian != null) {
+            sb.append(",\"peer_median\":")
+                    .append(formatNumber(comparison.peerMedian));
+        }
+        if (includeFlagReason) {
+            sb.append(",\"flag_reason\":\"")
+                    .append(GroqClient.jsonEscape(comparison.flagReason))
+                    .append("\"");
+        }
+        sb.append('}');
+    }
+
+    /**
+     * JSON number formatting matching the Contract §8 example: integral
+     * values render without a decimal point (680, 85, 410), others with
+     * their natural decimal representation (0.7, 2.5).
+     */
+    private static String formatNumber(double value) {
+        if (value == Math.rint(value) && Math.abs(value) < 1.0e15) {
+            return Long.toString((long) value);
+        }
+        return Double.toString(value);
     }
 
     /** Convenience: flags from parallel ingredient/category lists. */

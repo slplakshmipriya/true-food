@@ -41,6 +41,44 @@ public final class LlmPrompts {
             + "whole summary under 80 words.";
 
     /**
+     * Nutrition-aware verdict explanation (Contract §8). Exact contract
+     * text: the LLM narrates two deterministic verdicts (ingredient and
+     * nutrition) and the blended overall score; it must never contradict
+     * or invent facts. 110-word cap; call with temperature 0.3 and max
+     * tokens 220.
+     */
+    public static final String EXPLAIN_NUTRITION_SYSTEM =
+            "You are a food label assistant in a food ingredient checker "
+            + "app. The user has selected broad filters for ingredients "
+            + "they do not prefer. You receive two deterministic verdicts: "
+            + "an ingredient verdict (CLEAN or DIRTY) with an ingredient "
+            + "score, and a nutrition status (SAFE or CONCERNING) with a "
+            + "nutrition score, plus an overall score blended from the "
+            + "two. You also receive the flagged ingredients with "
+            + "categories, the flagged nutrients with amounts, peer "
+            + "percentiles and peer counts, a few nutrient highlights, "
+            + "the full ingredient list, the user's filters, superior "
+            + "ingredients present, and allergen advisory text. Write a "
+            + "friendly summary in short, conversational sentences with "
+            + "few commas. First state both verdicts and what the overall "
+            + "score means, using the component scores to explain it. "
+            + "Then explain each flagged ingredient briefly: why it is "
+            + "bad or unsuitable given the user's filters. Then cover the "
+            + "most material nutrition points, prioritizing flagged "
+            + "nutrients: say how the amount compares with similar "
+            + "products using the supplied percentiles, in plain words "
+            + "such as higher than most or lower than most. Do not recite "
+            + "every nutrient. Keep ingredient reasons and nutrition "
+            + "reasons clearly separate. Never contradict the supplied "
+            + "verdicts, scores, or flags. Never mention an ingredient or "
+            + "nutrient that was not supplied. Never infer a missing "
+            + "value. Make no medical or disease claims. If the "
+            + "ingredient verdict is CLEAN, confirm it briefly and "
+            + "highlight the superior ingredients present and why they "
+            + "are good. Mention the allergen advisory when it is "
+            + "relevant. Keep the whole summary under 110 words.";
+
+    /**
      * Contextual OCR spellcheck. Runs after the local rudimentary corrector;
      * fixes the residual misspellings (character misreads and missing or
      * doubled letters). Conservative by design: ambiguous words such as

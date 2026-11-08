@@ -66,6 +66,10 @@ import com.barelabel.app.ocr.OcrPreprocessor;
 import com.barelabel.app.ocr.ServerSpellChecker;
 import com.barelabel.app.llm.LlmSpellChecker;
 import com.barelabel.app.llm.VerdictExplainer;
+import com.barelabel.app.nutrition.NutritionAnalysis;
+import com.barelabel.app.nutrition.NutritionConfig;
+import com.barelabel.app.nutrition.NutritionConfigLoader;
+import com.barelabel.app.nutrition.OverallScoreCalculator;
 import com.barelabel.app.search.BarcodeSeed;
 import com.barelabel.app.search.CleanAlternateFinder;
 import com.barelabel.app.search.DisambiguationDecider;
@@ -1310,6 +1314,18 @@ private void bindVerdictExplanation(ProductResult result, boolean isClean,
     final ProductResult forResult = result;
     final boolean clean = isClean;
     final int score = cleanScore;
+    // NUT-10: nutrition-aware explanation inputs. The analysis rides on
+    // the current primary result (null until the orchestration in NUT-05
+    // has run); the config load is a cached singleton. When the config
+    // is unavailable the overall score is just the ingredient score —
+    // OverallScoreCalculator.blend documents the same null behavior.
+    final NutritionAnalysis analysis = currentPrimaryResult != null
+            ? currentPrimaryResult.nutritionAnalysis : null;
+    final NutritionConfig nutritionConfig = NutritionConfigLoader.load(this);
+    final int overallScore = nutritionConfig == null ? cleanScore
+            : OverallScoreCalculator.blend(cleanScore,
+                    analysis != null ? analysis.nutritionScore : null,
+                    nutritionConfig);
     new Thread(() -> {
         List<VerdictExplainer.Flag> flags = new ArrayList<>();
         String ingredients = "";
@@ -1331,9 +1347,10 @@ private void bindVerdictExplanation(ProductResult result, boolean isClean,
                 }
             }
         }
-        String explanation = VerdictExplainer.explain(clean, score, flags,
-                ingredients, enabledFilterNames(),
-                superiorIn(ingredients), allergen);
+        String explanation = VerdictExplainer.explain(forResult, score,
+                analysis, overallScore, flags, ingredients,
+                enabledFilterNames(), superiorIn(ingredients), allergen,
+                nutritionConfig);
         runOnUiThread(() -> {
             if (currentPrimaryResult != forResult) {
                 return; // stale: user moved on
