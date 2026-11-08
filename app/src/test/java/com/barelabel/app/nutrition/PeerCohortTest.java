@@ -497,8 +497,8 @@ public class PeerCohortTest {
 
     @Test
     public void madFence_dropsPlausibleButExtremeValue() throws Exception {
-        // Sodium clustered 100..190 (median 150, MAD 30, fence upper
-        // bound ~305.7): 2000 mg is plausible (<= 5000) but fenced out.
+        // Sodium clustered 100..190 (median 145, MAD 25, fence upper
+        // bound ~274.7): 2000 mg is plausible (<= 5000) but fenced out.
         List<CohortPeer> pool = new ArrayList<>();
         double[] clustered = {100, 110, 120, 130, 140, 150, 160, 170, 180, 190};
         for (int i = 0; i < clustered.length; i++) {
@@ -512,7 +512,7 @@ public class PeerCohortTest {
         PeerDistribution sodium = cohort.byNutrient.get("sodium");
         assertEquals(10, sodium.count());
         assertFalse(sodium.values.contains(2000.0));
-        assertEquals(150.0, sodium.median, EPS);
+        assertEquals(145.0, sodium.median, EPS);
     }
 
     @Test
