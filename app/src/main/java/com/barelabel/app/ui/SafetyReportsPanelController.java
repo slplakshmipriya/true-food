@@ -1,6 +1,5 @@
 package com.barelabel.app.ui;
 
-import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
@@ -235,9 +234,13 @@ public class SafetyReportsPanelController {
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
             context.startActivity(intent);
-        } catch (ActivityNotFoundException | SecurityException e) {
-            // No browser available: the section is informational,
-            // so there is nothing to surface (§7 silence).
+        } catch (RuntimeException e) {
+            // NA-07 (NA-06 review MINOR 1): broadened from
+            // ActivityNotFoundException | SecurityException to
+            // RuntimeException — no browser available, a malformed
+            // link, or any other launch failure: the section is
+            // informational, so there is nothing to surface
+            // (§7 silence).
         }
     }
 
