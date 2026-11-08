@@ -1,5 +1,6 @@
 package com.barelabel.app.nutrition;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -65,7 +66,8 @@ public final class NutrientDefinition {
                               Double lowFlagAtOrBelow, String fallbackKey,
                               Double fallbackWeightFactor) {
         this.key = key;
-        this.usdaIds = Collections.unmodifiableList(usdaIds);
+        this.usdaIds = Collections.unmodifiableList(
+                new ArrayList<>(usdaIds));
         this.label = label;
         this.unit = unit;
         this.direction = direction;

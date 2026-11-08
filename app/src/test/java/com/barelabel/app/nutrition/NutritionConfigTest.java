@@ -421,4 +421,112 @@ public class NutritionConfigTest {
         aboveOne.getJSONObject("scoring").put("minCoverage", 1.5);
         expectInvalid(aboveOne.toString());
     }
+
+    // ---- duplicate keys in the raw JSON (org.json collapses these) -----
+
+    @Test
+    public void duplicateTopLevelKey_throws() {
+        // A second top-level "blend" object appended before the final brace:
+        // otherwise valid JSON that org.json would silently collapse.
+        String raw = VALID_JSON.substring(0, VALID_JSON.length() - 1)
+                + ",\"blend\": {\"ingredientWeight\": 0.70,"
+                + " \"nutritionWeight\": 0.30}}";
+        expectInvalid(raw);
+    }
+
+    @Test
+    public void duplicateKeyInsideNutrient_throws() {
+        // "severeAt": 750 is unique to the energy nutrient, whose object
+        // already carries a "weight" key.
+        String raw = VALID_JSON.replace("\"severeAt\": 750",
+                "\"severeAt\": 750, \"weight\": 0.10");
+        expectInvalid(raw);
+    }
+
+    @Test
+    public void duplicateKeyInsideRankingProfile_throws() {
+        // "focusedNutrition": 0.35 is unique to dirty_concerning.
+        String raw = VALID_JSON.replace("\"focusedNutrition\": 0.35",
+                "\"focusedNutrition\": 0.35, \"focusedNutrition\": 0.35");
+        expectInvalid(raw);
+    }
+
+    @Test
+    public void sameKeyNameInDifferentObjects_parses() throws Exception {
+        // Control: "weight" (and most other keys) legitimately appear in
+        // every nutrient object — duplicates are per-object, not global.
+        NutritionConfig config = parseValid();
+        assertEquals(11, config.byKey.size());
+        for (NutrientDefinition def : config.byKey.values()) {
+            assertTrue(def.weight > 0);
+        }
+    }
+
+    // ---- duplicate USDA IDs ---------------------------------------------
+
+    @Test
+    public void duplicateUsdaIdAcrossNutrients_throws() throws Exception {
+        JSONObject root = mutated();
+        // Give protein energy's USDA ID (1008).
+        nutrientAt(root, 1).put("usdaIds", new JSONArray().put(1008));
+        expectInvalid(root.toString());
+    }
+
+    @Test
+    public void duplicateUsdaIdWithinNutrient_throws() throws Exception {
+        JSONObject root = mutated();
+        nutrientAt(root, 0).put("usdaIds",
+                new JSONArray().put(1008).put(1008));
+        expectInvalid(root.toString());
+    }
+
+    // ---- validator strictness -------------------------------------------
+
+    @Test
+    public void unknownUnit_throws() throws Exception {
+        JSONObject root = mutated();
+        nutrientAt(root, 0).put("unit", "oz");
+        expectInvalid(root.toString());
+    }
+
+    @Test
+    public void negativeBlendComponent_throws() throws Exception {
+        JSONObject root = mutated();
+        // Sums to 1.0, but a component is negative.
+        root.getJSONObject("blend").put("ingredientWeight", 1.30);
+        root.getJSONObject("blend").put("nutritionWeight", -0.30);
+        expectInvalid(root.toString());
+    }
+
+    @Test
+    public void negativeRankingProfileComponent_throws() throws Exception {
+        JSONObject root = mutated();
+        // dirty_only still sums to 1.0: 0.90 - 0.15 + 0.15 + 0.10.
+        JSONObject dirtyOnly = root.getJSONObject("rankingProfiles")
+                .getJSONObject("dirty_only");
+        dirtyOnly.put("ingredientAdvantage", 0.90);
+        dirtyOnly.put("focusedNutrition", -0.15);
+        expectInvalid(root.toString());
+    }
+
+    @Test
+    public void flagEligibleHigherBadWithoutFlagRule_throws()
+            throws Exception {
+        JSONObject root = mutated();
+        JSONObject energy = nutrientAt(root, 0);
+        energy.remove("flagPercentile");
+        energy.remove("flagFloor");
+        energy.remove("severeAt");
+        expectInvalid(root.toString());
+    }
+
+    @Test
+    public void flagEligibleHigherGoodWithoutLowFlagRule_throws()
+            throws Exception {
+        JSONObject root = mutated();
+        JSONObject fiber = nutrientAt(root, 6);
+        fiber.remove("lowFlagPercentile");
+        fiber.remove("lowFlagAtOrBelow");
+        expectInvalid(root.toString());
+    }
 }

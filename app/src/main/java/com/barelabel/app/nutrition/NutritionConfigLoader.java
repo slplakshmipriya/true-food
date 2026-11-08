@@ -8,10 +8,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -59,12 +61,25 @@ public final class NutritionConfigLoader {
         if (loadFailed) {
             return null;
         }
+        final String json;
         try {
-            String json = readAsset(context);
+            json = readAsset(context);
+        } catch (Exception e) {
+            // Not a config failure (e.g. a null-context NPE or a transient
+            // asset read error): do NOT latch loadFailed — a later call may
+            // succeed. Still fail closed for this call.
+            Log.e(TAG, "Nutrition config could not be read; "
+                    + "nutrition treated as UNAVAILABLE", e);
+            return null;
+        }
+        try {
             cached = parse(json);
             return cached;
-        } catch (Exception e) {
-            // Fail closed: log once, no hard-coded defaults.
+        } catch (NutritionConfigException e) {
+            // Real config validation/parse failure (parse wraps any
+            // JSONException from parsing the asset into this type): latch
+            // so the failure is logged once and never retried, and never
+            // fall back to hard-coded defaults.
             loadFailed = true;
             Log.e(TAG, "Nutrition config unavailable; "
                     + "nutrition treated as UNAVAILABLE", e);
@@ -99,6 +114,10 @@ public final class NutritionConfigLoader {
         if (json == null) {
             throw new NutritionConfigException("null nutrition config JSON");
         }
+        // org.json collapses duplicate object keys (last wins), so the
+        // §1.3 duplicate-key rejection must run on the raw token stream
+        // before JSONObject ever sees the text.
+        new RawDuplicateKeyChecker(json).check();
         final JSONObject root;
         try {
             root = new JSONObject(json);
@@ -121,6 +140,11 @@ public final class NutritionConfigLoader {
         JSONObject blend = requireObject(root, "blend");
         double ingredientWeight = requireDouble(blend, "ingredientWeight");
         double nutritionWeight = requireDouble(blend, "nutritionWeight");
+        if (ingredientWeight < 0 || nutritionWeight < 0) {
+            throw new NutritionConfigException(
+                    "blend weights must not be negative: " + ingredientWeight
+                            + ", " + nutritionWeight);
+        }
         if (Math.abs(ingredientWeight + nutritionWeight - 1.0)
                 > SUM_TOLERANCE) {
             throw new NutritionConfigException(
@@ -187,6 +211,11 @@ public final class NutritionConfigLoader {
             double overallNutrition =
                     requireDouble(profile, "overallNutrition");
             double preferences = requireDouble(profile, "preferences");
+            if (ingredientAdvantage < 0 || focusedNutrition < 0
+                    || overallNutrition < 0 || preferences < 0) {
+                throw new NutritionConfigException("ranking profile " + name
+                        + " has a negative weight");
+            }
             double sum = ingredientAdvantage + focusedNutrition
                     + overallNutrition + preferences;
             if (Math.abs(sum - 1.0) > SUM_TOLERANCE) {
@@ -211,12 +240,21 @@ public final class NutritionConfigLoader {
             JSONArray nutrients) throws JSONException,
             NutritionConfigException {
         Map<String, NutrientDefinition> byKey = new LinkedHashMap<>();
+        Set<Integer> seenUsdaIds = new HashSet<>();
         for (int i = 0; i < nutrients.length(); i++) {
             JSONObject item = nutrients.getJSONObject(i);
             NutrientDefinition def = parseNutrient(item);
             if (byKey.containsKey(def.key)) {
                 throw new NutritionConfigException(
                         "duplicate nutrient key: " + def.key);
+            }
+            // A USDA ID may belong to exactly one nutrient: otherwise
+            // NutritionConfig.byUsdaId would silently overwrite.
+            for (Integer usdaId : def.usdaIds) {
+                if (!seenUsdaIds.add(usdaId)) {
+                    throw new NutritionConfigException("duplicate USDA ID "
+                            + usdaId + " (nutrient " + def.key + ")");
+                }
             }
             byKey.put(def.key, def);
         }
@@ -274,22 +312,51 @@ public final class NutritionConfigLoader {
                     + goodAt + ", badAt=" + badAt);
         }
 
+        String unit = requireString(item, "unit");
+        if (!"g".equals(unit) && !"mg".equals(unit) && !"kcal".equals(unit)) {
+            throw new NutritionConfigException("nutrient " + key
+                    + " has unknown unit: " + unit);
+        }
+
+        boolean flagEligible = requireBoolean(item, "flagEligible");
+        Double flagPercentile = optionalDouble(item, "flagPercentile");
+        Double flagFloor = optionalDouble(item, "flagFloor");
+        Double severeAt = optionalDouble(item, "severeAt");
+        Double lowFlagPercentile = optionalDouble(item, "lowFlagPercentile");
+        Double lowFlagAtOrBelow = optionalDouble(item, "lowFlagAtOrBelow");
+        if (flagEligible) {
+            // A flag-eligible nutrient must carry the flag rule for its
+            // direction, or its flags could never fire.
+            if ("higher_bad".equals(direction)) {
+                boolean relativeRule = flagPercentile != null
+                        && flagFloor != null;
+                if (!relativeRule && severeAt == null) {
+                    throw new NutritionConfigException("nutrient " + key
+                            + " is flagEligible but has no higher_bad flag"
+                            + " rule (needs flagPercentile + flagFloor,"
+                            + " or severeAt)");
+                }
+            } else if (lowFlagPercentile == null || lowFlagAtOrBelow == null) {
+                throw new NutritionConfigException("nutrient " + key
+                        + " is flagEligible but has no higher_good low"
+                        + " flag rule (needs lowFlagPercentile +"
+                        + " lowFlagAtOrBelow)");
+            }
+        }
+
         String fallbackKey = item.has("fallbackKey")
                 && !item.isNull("fallbackKey")
                 ? item.getString("fallbackKey") : null;
 
         return new NutrientDefinition(key, usdaIds,
-                requireString(item, "label"), requireString(item, "unit"),
+                requireString(item, "label"), unit,
                 direction, requireBoolean(item, "display"),
                 requireBoolean(item, "scoreEligible"),
-                requireBoolean(item, "flagEligible"), weight,
+                flagEligible, weight,
                 requireString(item, "scoringGroup"), plausibleMin,
                 plausibleMax, goodAt, badAt,
-                optionalDouble(item, "flagPercentile"),
-                optionalDouble(item, "flagFloor"),
-                optionalDouble(item, "severeAt"),
-                optionalDouble(item, "lowFlagPercentile"),
-                optionalDouble(item, "lowFlagAtOrBelow"), fallbackKey,
+                flagPercentile, flagFloor, severeAt,
+                lowFlagPercentile, lowFlagAtOrBelow, fallbackKey,
                 optionalDouble(item, "fallbackWeightFactor"));
     }
 
@@ -347,5 +414,202 @@ public final class NutritionConfigLoader {
             return null;
         }
         return parent.getDouble(name);
+    }
+
+    /**
+     * Strict duplicate-key scan over the raw JSON text. org.json collapses
+     * duplicate keys within one object (last wins) before any validation
+     * could see them, so §1.3's duplicate rejection needs this pass: it
+     * walks the token stream recursively, keeps a key set per object
+     * nesting level, decodes string escapes (so a key written with a
+     * {@code \\uXXXX} escape still compares equal to its plain form), and
+     * throws on the second occurrence of a key within the same object.
+     * The same key name in different objects is fine. Structural problems
+     * found along the way are reported as malformed JSON — the subsequent
+     * org.json parse would reject the same text.
+     */
+    private static final class RawDuplicateKeyChecker {
+
+        private final String text;
+        private int pos;
+
+        RawDuplicateKeyChecker(String text) {
+            this.text = text;
+        }
+
+        void check() throws NutritionConfigException {
+            skipWhitespace();
+            parseValue();
+            skipWhitespace();
+            if (pos != text.length()) {
+                throw malformed("trailing content at offset " + pos);
+            }
+        }
+
+        private void parseValue() throws NutritionConfigException {
+            skipWhitespace();
+            if (pos >= text.length()) {
+                throw malformed("unexpected end of input");
+            }
+            char c = text.charAt(pos);
+            if (c == '{') {
+                parseObject();
+            } else if (c == '[') {
+                parseArray();
+            } else if (c == '"') {
+                parseString();
+            } else {
+                parseLiteral();
+            }
+        }
+
+        private void parseObject() throws NutritionConfigException {
+            pos++; // consume '{'
+            Set<String> keys = new HashSet<>();
+            skipWhitespace();
+            if (peek('}')) {
+                pos++;
+                return;
+            }
+            while (true) {
+                skipWhitespace();
+                if (!peek('"')) {
+                    throw malformed("expected object key at offset " + pos);
+                }
+                String key = parseString();
+                if (!keys.add(key)) {
+                    throw new NutritionConfigException(
+                            "duplicate key in JSON object: \"" + key + "\"");
+                }
+                skipWhitespace();
+                if (!peek(':')) {
+                    throw malformed("expected ':' at offset " + pos);
+                }
+                pos++;
+                parseValue();
+                skipWhitespace();
+                if (peek(',')) {
+                    pos++;
+                } else if (peek('}')) {
+                    pos++;
+                    return;
+                } else {
+                    throw malformed("expected ',' or '}' at offset " + pos);
+                }
+            }
+        }
+
+        private void parseArray() throws NutritionConfigException {
+            pos++; // consume '['
+            skipWhitespace();
+            if (peek(']')) {
+                pos++;
+                return;
+            }
+            while (true) {
+                parseValue();
+                skipWhitespace();
+                if (peek(',')) {
+                    pos++;
+                } else if (peek(']')) {
+                    pos++;
+                    return;
+                } else {
+                    throw malformed("expected ',' or ']' at offset " + pos);
+                }
+            }
+        }
+
+        /** Parses a string literal and returns its decoded value. */
+        private String parseString() throws NutritionConfigException {
+            pos++; // consume opening '"'
+            StringBuilder decoded = new StringBuilder();
+            while (pos < text.length()) {
+                char c = text.charAt(pos++);
+                if (c == '"') {
+                    return decoded.toString();
+                }
+                if (c == '\\') {
+                    decoded.append(parseEscape());
+                } else {
+                    decoded.append(c);
+                }
+            }
+            throw malformed("unterminated string");
+        }
+
+        private char parseEscape() throws NutritionConfigException {
+            if (pos >= text.length()) {
+                throw malformed("unterminated escape");
+            }
+            char e = text.charAt(pos++);
+            switch (e) {
+                case '"':
+                    return '"';
+                case '\\':
+                    return '\\';
+                case '/':
+                    return '/';
+                case 'b':
+                    return '\b';
+                case 'f':
+                    return '\f';
+                case 'n':
+                    return '\n';
+                case 'r':
+                    return '\r';
+                case 't':
+                    return '\t';
+                case 'u':
+                    if (pos + 4 > text.length()) {
+                        throw malformed("truncated unicode escape");
+                    }
+                    try {
+                        int code = Integer.parseInt(
+                                text.substring(pos, pos + 4), 16);
+                        pos += 4;
+                        return (char) code;
+                    } catch (NumberFormatException ex) {
+                        throw malformed("invalid unicode escape");
+                    }
+                default:
+                    throw malformed("invalid escape: \\" + e);
+            }
+        }
+
+        private void parseLiteral() throws NutritionConfigException {
+            int start = pos;
+            while (pos < text.length()) {
+                char c = text.charAt(pos);
+                if (c == ',' || c == '}' || c == ']' || c == ' '
+                        || c == '\t' || c == '\n' || c == '\r') {
+                    break;
+                }
+                pos++;
+            }
+            if (pos == start) {
+                throw malformed("expected a value at offset " + pos);
+            }
+        }
+
+        private boolean peek(char expected) {
+            return pos < text.length() && text.charAt(pos) == expected;
+        }
+
+        private void skipWhitespace() {
+            while (pos < text.length()) {
+                char c = text.charAt(pos);
+                if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                    pos++;
+                } else {
+                    return;
+                }
+            }
+        }
+
+        private NutritionConfigException malformed(String detail) {
+            return new NutritionConfigException(
+                    "malformed nutrition config JSON: " + detail);
+        }
     }
 }
