@@ -26,11 +26,15 @@ import java.util.Set;
  * (source, normalized-term-set hash), hashed filenames so a raw
  * search term never appears in a filename (section 8).
  *
- * <p>Each file holds a JSON array of the raw response bodies for
+ * <p>Each file holds a JSON array of the response bodies for
  * that term (one per openFDA term variant; a single body for RSS),
- * so the cached payload is JSON for both sources while the bodies
- * themselves stay byte-for-byte raw. Matching always runs later, at
- * display time, on whatever the clients parse out of these bodies.
+ * so the cached payload is JSON for both sources. The bodies are
+ * stored exactly as the fetcher returned them — which is the
+ * fetcher's line-normalized text, not byte-for-byte raw response
+ * bytes: {@code UrlConnectionHttpFetcher} reads line by line and
+ * rejoins with '\n' (NA-07, NA-03 review NOTE 1). Matching always
+ * runs later, at display time, on whatever the clients parse out
+ * of these bodies.
  *
  * <p>TTL is 24 h judged by file mtime; an expired entry is deleted
  * and reported as a miss. A read does NOT refresh the mtime: the

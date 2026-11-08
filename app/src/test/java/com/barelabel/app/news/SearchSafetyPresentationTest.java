@@ -107,6 +107,21 @@ public class SearchSafetyPresentationTest {
     }
 
     @Test
+    public void countLine_punctuationBearingTerm_shownVerbatim() {
+        // NA-07 (NA-05 MINOR 2): punctuation in the raw term —
+        // commas, parentheses, apostrophes, ampersands — flows
+        // into the count line byte-for-byte, never normalized.
+        assertEquals("2 safety reports for \"strawberry, organic "
+                        + "(16 oz)!\" \u2014 tap a flagged item to see them",
+                SearchSafetyPresentation.countLineText(
+                        2, "strawberry, organic (16 oz)!"));
+        assertEquals("1 safety report for \"farmer's strawberries "
+                        + "& cream\" \u2014 tap a flagged item to see them",
+                SearchSafetyPresentation.countLineText(
+                        1, "farmer's strawberries & cream"));
+    }
+
+    @Test
     public void countLine_missingTerm_noLine() {
         assertNull(SearchSafetyPresentation.countLineText(3, null));
         assertNull(SearchSafetyPresentation.countLineText(3, ""));

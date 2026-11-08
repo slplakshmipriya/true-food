@@ -105,7 +105,8 @@ public class MainActivity extends AppCompatActivity {
     private static final int C_RED_900 = android.graphics.Color.parseColor("#7F1D1D");
     private static final int C_RED_800 = android.graphics.Color.parseColor("#991B1B");
     private static final int C_AMBER_800 = android.graphics.Color.parseColor("#92400E");
-    private static final int C_AMBER_900 = android.graphics.Color.parseColor("#78350F");
+    // Single-sourced from SearchSafetyBinder (NA-07, NA-05 MINOR 1).
+    private static final int C_AMBER_900 = SearchSafetyBinder.C_AMBER_900;
 
     // Member Variable Declarations
     private EditText searchBox;

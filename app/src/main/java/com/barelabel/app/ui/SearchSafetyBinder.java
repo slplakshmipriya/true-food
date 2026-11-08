@@ -37,8 +37,12 @@ import java.util.List;
  */
 public final class SearchSafetyBinder {
 
-    /** Amber-900, same value as MainActivity's C_AMBER_900. */
-    private static final int C_AMBER_900 = Color.parseColor("#78350F");
+    /**
+     * Amber-900 (#78350F). Single source for this value (NA-07,
+     * NA-05 review MINOR 1): MainActivity's C_AMBER_900 aliases
+     * this constant instead of repeating the literal.
+     */
+    public static final int C_AMBER_900 = Color.parseColor("#78350F");
 
     /** One registered result row awaiting (or holding) its badge. */
     private static final class RowBinding {

@@ -15,6 +15,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -363,6 +364,175 @@ public class FdaRecallMatcherTest {
         assertTrue(alerts.get(0).productText.endsWith("\u2026"));
         assertTrue(alerts.get(0).reasonText.length() <= 220);
         assertTrue(alerts.get(0).reasonText.endsWith("\u2026"));
+    }
+
+    // ------------------------------------------------------------------
+    // NA-07 M1: strict report-date validity (month length + leap year)
+    // ------------------------------------------------------------------
+
+    @Test
+    public void newsDates_rejectsImpossibleCalendarDates() {
+        // Month lengths: Feb never has 30 days; Apr/Jun/Sep/Nov
+        // never have 31.
+        assertFalse(NewsDates.isValid(20260230));
+        assertFalse(NewsDates.isValid(20260431));
+        assertFalse(NewsDates.isValid(20260631));
+        assertFalse(NewsDates.isValid(20260931));
+        assertFalse(NewsDates.isValid(20261131));
+        // Month/day ranges.
+        assertFalse(NewsDates.isValid(20261301));
+        assertFalse(NewsDates.isValid(20260010));
+        assertFalse(NewsDates.isValid(20260100));
+        assertFalse(NewsDates.isValid(20260132));
+        assertFalse(NewsDates.isValid(0));
+    }
+
+    @Test
+    public void newsDates_leapYearRulesForFeb29() {
+        assertFalse(NewsDates.isValid(20250229));
+        assertFalse(NewsDates.isValid(20260229));
+        // Century years are leap only when divisible by 400.
+        assertFalse(NewsDates.isValid(21000229));
+        assertFalse(NewsDates.isValid(19000229));
+        assertTrue(NewsDates.isValid(20240229));
+        assertTrue(NewsDates.isValid(20000229));
+        assertTrue(NewsDates.isValid(20260228));
+        assertTrue(NewsDates.isValid(20260131));
+        assertTrue(NewsDates.isValid(20260430));
+        assertTrue(NewsDates.isValid(20261231));
+    }
+
+    @Test
+    public void invalidReportDates_formatAsEmptyAndEpochAsInvalid() {
+        assertEquals("", FdaMetaFormatter.formatDate(20260230));
+        assertEquals("", FdaMetaFormatter.formatDate(20261301));
+        assertEquals("", FdaMetaFormatter.formatDate(20250229));
+        assertEquals(NewsDates.INVALID_EPOCH_DAY,
+                NewsDates.epochDayFromYyyymmdd(20260230));
+        // The invalid date contributes no "Reported ..." segment.
+        assertEquals("Class I \u00b7 Ongoing",
+                FdaMetaFormatter.format("Class I", 20260230, "Ongoing"));
+    }
+
+    @Test
+    public void matcher_dropsNonOngoingRecordWithInvalidReportDate() {
+        // 20260230 is not a real date. Against a 2026-03-15
+        // reference the pre-fix arithmetic read it as ~Mar 2 (well
+        // inside 90 days) and kept the record; strict validation
+        // must drop it.
+        List<FdaRecord> records = Arrays.asList(record(
+                "Some Farm", "Strawberry Jam", "",
+                "Class II", "Completed", 20260230, "1", "F-0001-2026"));
+        List<SafetyAlert> alerts = FdaRecallMatcher.match(
+                records, NewsText.queryTokens("strawberry"), 20260315);
+        assertTrue(alerts.isEmpty());
+    }
+
+    // ------------------------------------------------------------------
+    // NA-07 M2: meta formatter trims classification/status segments
+    // ------------------------------------------------------------------
+
+    @Test
+    public void metaFormatter_trimsClassificationAndStatus() {
+        assertEquals("Class I \u00b7 Reported Nov 2, 2026 \u00b7 Ongoing",
+                FdaMetaFormatter.format("  Class I  ", 20261102,
+                        "  Ongoing  "));
+        assertEquals("Class II \u00b7 Reported Oct 15, 2026 \u00b7 Completed",
+                FdaMetaFormatter.format("\tClass II ", 20261015,
+                        " Completed\n"));
+    }
+
+    // ------------------------------------------------------------------
+    // NA-07 M3: SafetyAlert.ORDER ordering semantics (§1/§4)
+    // ------------------------------------------------------------------
+
+    private static SafetyAlert alert(SafetyAlert.Tier tier,
+                                     String classification, int date) {
+        return new SafetyAlert(tier, "headline", null, null, "",
+                tier == SafetyAlert.Tier.FDA ? "FDA recall" : "News report",
+                "", classification, null, null, null, date);
+    }
+
+    @Test
+    public void order_fdaBeforeNewsRegardlessOfDate() {
+        SafetyAlert oldFda = alert(SafetyAlert.Tier.FDA, "Class III",
+                20250101);
+        SafetyAlert newNews = alert(SafetyAlert.Tier.NEWS, null,
+                20261108);
+        assertTrue(SafetyAlert.ORDER.compare(oldFda, newNews) < 0);
+        assertTrue(SafetyAlert.ORDER.compare(newNews, oldFda) > 0);
+        List<SafetyAlert> sorted = new ArrayList<>(
+                Arrays.asList(newNews, oldFda));
+        Collections.sort(sorted, SafetyAlert.ORDER);
+        assertEquals(oldFda, sorted.get(0));
+        assertEquals(newNews, sorted.get(1));
+    }
+
+    @Test
+    public void order_fdaByClassRankThenDateDesc() {
+        SafetyAlert classIOld = alert(SafetyAlert.Tier.FDA, "Class I",
+                20261001);
+        SafetyAlert classINew = alert(SafetyAlert.Tier.FDA, "Class I",
+                20261101);
+        SafetyAlert classIINewest = alert(SafetyAlert.Tier.FDA,
+                "Class II", 20261107);
+        SafetyAlert classIII = alert(SafetyAlert.Tier.FDA, "Class III",
+                20261107);
+        SafetyAlert unknown = alert(SafetyAlert.Tier.FDA, null,
+                20261107);
+        List<SafetyAlert> sorted = new ArrayList<>(Arrays.asList(
+                unknown, classIII, classINew, classIINewest, classIOld));
+        Collections.sort(sorted, SafetyAlert.ORDER);
+        assertEquals(classINew, sorted.get(0));
+        assertEquals(classIOld, sorted.get(1));
+        assertEquals(classIINewest, sorted.get(2));
+        assertEquals(classIII, sorted.get(3));
+        // Unknown/missing classification ranks after Class III.
+        assertEquals(unknown, sorted.get(4));
+    }
+
+    @Test
+    public void order_newsByDateDesc() {
+        SafetyAlert older = alert(SafetyAlert.Tier.NEWS, null, 20261101);
+        SafetyAlert newer = alert(SafetyAlert.Tier.NEWS, null, 20261107);
+        assertTrue(SafetyAlert.ORDER.compare(newer, older) < 0);
+        assertTrue(SafetyAlert.ORDER.compare(older, newer) > 0);
+        assertEquals(0, SafetyAlert.ORDER.compare(
+                newer, alert(SafetyAlert.Tier.NEWS, null, 20261107)));
+    }
+
+    @Test
+    public void order_agreesWithNaturalOrdering() {
+        SafetyAlert a = alert(SafetyAlert.Tier.FDA, "Class II", 20261101);
+        SafetyAlert b = alert(SafetyAlert.Tier.FDA, "Class I", 20261001);
+        assertEquals(Integer.signum(a.compareTo(b)),
+                Integer.signum(SafetyAlert.ORDER.compare(a, b)));
+        assertEquals(Integer.signum(b.compareTo(a)),
+                Integer.signum(SafetyAlert.ORDER.compare(b, a)));
+    }
+
+    // ------------------------------------------------------------------
+    // NA-07 M3: fixture product/reason text flows byte-exact (§9)
+    // ------------------------------------------------------------------
+
+    @Test
+    public void fixture_alertProductAndReasonTextAreByteExact()
+            throws Exception {
+        List<SafetyAlert> alerts = FdaRecallMatcher.match(
+                fixtureRecords(), NewsText.queryTokens("strawberry"),
+                REFERENCE);
+        assertEquals(2, alerts.size());
+        // Values copied byte-for-byte from fda_strawberry.json.
+        assertEquals("Fresh Breeze Farms Organic Strawberries, "
+                + "16 oz clamshell", alerts.get(0).productText);
+        assertEquals("Potential hepatitis A contamination: product may "
+                + "be contaminated with hepatitis A virus detected "
+                + "during routine sampling.", alerts.get(0).reasonText);
+        assertEquals("Sunny Valley Fresh Strawberries, 1 lb clamshell",
+                alerts.get(1).productText);
+        assertEquals("Potential Listeria contamination: product may be "
+                + "contaminated with Listeria monocytogenes.",
+                alerts.get(1).reasonText);
     }
 
     @Test

@@ -3,7 +3,9 @@ package com.barelabel.app.news;
 /**
  * FDA meta line formatter (Contract §6.4):
  * {@code Class I · Reported Nov 2, 2026 · Ongoing} — classification
- * and status verbatim, the date formatted from its YYYYMMDD int
+ * and status verbatim apart from whitespace trimming (NA-07,
+ * NA-01 review M2: padded API values must not leak spaces into
+ * the meta line), the date formatted from its YYYYMMDD int
  * with English month abbreviations. Missing parts are omitted
  * rather than rendered as blanks.
  */
@@ -28,7 +30,7 @@ public final class FdaMetaFormatter {
                                 int reportDateYyyymmdd, String status) {
         StringBuilder sb = new StringBuilder();
         if (classification != null && !classification.trim().isEmpty()) {
-            sb.append(classification);
+            sb.append(classification.trim());
         }
         String date = formatDate(reportDateYyyymmdd);
         if (!date.isEmpty()) {
@@ -41,7 +43,7 @@ public final class FdaMetaFormatter {
             if (sb.length() > 0) {
                 sb.append(" \u00b7 ");
             }
-            sb.append(status);
+            sb.append(status.trim());
         }
         return sb.toString();
     }
