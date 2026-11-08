@@ -268,4 +268,32 @@ public class NutritionPanelPartitionTest {
         assertEquals("", NutritionPanelPartition.peerStatement(noPeers));
         assertEquals("", NutritionPanelPartition.peerStatement(null));
     }
+
+    @Test
+    public void peerStatement_edgePercentilesUseWordsNotImpossiblePercents() {
+        // Percentile exactly 100: the value exceeds every peer.
+        NutrientComparison top = new NutrientComparison(
+                "fiber", 7.1, null, 75, 3.6, 100.0, 100.0,
+                null, null, false, "");
+        assertEquals("Higher than all 75 similar products",
+                NutritionPanelPartition.peerStatement(top));
+        // Percentile exactly 0: the value is below every peer.
+        NutrientComparison bottom = new NutrientComparison(
+                "sodium", 40.0, null, 75, 410.0, 0.0, 100.0,
+                null, null, false, "");
+        assertEquals("Lower than all 75 similar products",
+                NutritionPanelPartition.peerStatement(bottom));
+        // 99.6 rounds to 100 arithmetically but must print as 99%.
+        NutrientComparison nearTop = new NutrientComparison(
+                "sodium", 900.0, null, 112, 410.0, 99.6, 0.4,
+                null, null, true, "relative_floor");
+        assertEquals("Higher than 99% of 112 similar products",
+                NutritionPanelPartition.peerStatement(nearTop));
+        // 0.4 rounds to 0 arithmetically but must print as 1%.
+        NutrientComparison nearBottom = new NutrientComparison(
+                "total_sugars", 0.1, null, 112, 7.1, 0.4, 99.6,
+                null, null, false, "");
+        assertEquals("Higher than 1% of 112 similar products",
+                NutritionPanelPartition.peerStatement(nearBottom));
+    }
 }

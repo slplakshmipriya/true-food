@@ -169,13 +169,30 @@ public final class NutritionPanelPartition {
      * the mockup phrases it for both directions. "" when the comparison
      * carries no valid percentile (peer count below the minimum), so
      * the panel shows the amount with no fabricated comparison.
+     *
+     * <p>Edge phrasing: a percentile of exactly 100 means the value
+     * exceeds every peer, and exactly 0 means it is below every peer;
+     * both are stated in words ("Higher than all 21 similar
+     * products") instead of the nonsensical "Higher than 100%".
+     * Percent values are clamped to 1–99 so a rounded 99.6 never
+     * prints as 100% either.
      */
     public static String peerStatement(NutrientComparison comparison) {
         if (comparison == null || comparison.rawPercentile == null
                 || comparison.peerCount <= 0) {
             return "";
         }
-        return "Higher than " + Math.round(comparison.rawPercentile)
+        double raw = comparison.rawPercentile;
+        if (raw >= 100.0) {
+            return "Higher than all " + comparison.peerCount
+                    + " similar products";
+        }
+        if (raw <= 0.0) {
+            return "Lower than all " + comparison.peerCount
+                    + " similar products";
+        }
+        long pct = Math.max(1L, Math.min(99L, Math.round(raw)));
+        return "Higher than " + pct
                 + "% of " + comparison.peerCount + " similar products";
     }
 }
