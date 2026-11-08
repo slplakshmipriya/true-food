@@ -220,7 +220,12 @@ public final class VerdictExplainer {
         }
         sb.append(']');
         List<NutrientComparison> highlights = new ArrayList<>();
-        for (NutrientComparison comparison : analysis.comparisons.values()) {
+        // Config order by construction: iterate the config's nutrient
+        // definitions and look each comparison up, instead of relying on
+        // the comparisons map's iteration order (which is the analyzer's
+        // insertion order and only happens to match config order today).
+        for (String key : config.byKey.keySet()) {
+            NutrientComparison comparison = analysis.comparisons.get(key);
             if (comparison == null || comparison.flagged
                     || analysis.flaggedNutrients.contains(comparison.key)
                     || comparison.favorablePercentile == null) {
@@ -307,6 +312,9 @@ public final class VerdictExplainer {
      * One flagged-nutrient or highlight entry (Contract §8 shape). Null
      * amount/percentile/peer values are omitted, never emitted as JSON
      * null; {@code peer_count} is emitted only alongside a percentile.
+     * Non-finite values (NaN, infinities) are treated exactly like null
+     * and omitted — a bare {@code NaN}/{@code Infinity} token is not
+     * valid JSON and would corrupt the payload.
      */
     private static void appendNutrient(StringBuilder sb,
                                        NutrientComparison comparison,
@@ -315,29 +323,30 @@ public final class VerdictExplainer {
         NutrientDefinition def = config.byKey.get(comparison.key);
         String label = def != null ? def.label : comparison.key;
         String unit = def != null ? def.unit : "";
+        boolean hasRaw = isFinite(comparison.rawPercentile);
+        boolean hasFavorable = isFinite(comparison.favorablePercentile);
         sb.append("{\"key\":\"")
                 .append(GroqClient.jsonEscape(comparison.key))
                 .append("\",\"label\":\"")
                 .append(GroqClient.jsonEscape(label)).append("\"");
-        if (comparison.per100 != null) {
+        if (isFinite(comparison.per100)) {
             sb.append(",\"amount_per_100\":")
                     .append(formatNumber(comparison.per100));
         }
         sb.append(",\"unit\":\"").append(GroqClient.jsonEscape(unit))
                 .append("\"");
-        if (comparison.rawPercentile != null) {
+        if (hasRaw) {
             sb.append(",\"raw_percentile\":")
                     .append(formatNumber(comparison.rawPercentile));
         }
-        if (comparison.favorablePercentile != null) {
+        if (hasFavorable) {
             sb.append(",\"favorable_percentile\":")
                     .append(formatNumber(comparison.favorablePercentile));
         }
-        if (comparison.rawPercentile != null
-                || comparison.favorablePercentile != null) {
+        if (hasRaw || hasFavorable) {
             sb.append(",\"peer_count\":").append(comparison.peerCount);
         }
-        if (comparison.peerMedian != null) {
+        if (isFinite(comparison.peerMedian)) {
             sb.append(",\"peer_median\":")
                     .append(formatNumber(comparison.peerMedian));
         }
@@ -350,9 +359,20 @@ public final class VerdictExplainer {
     }
 
     /**
+     * True when a nullable payload number is present and finite. NaN and
+     * infinite values count as absent (see {@link #appendNutrient}).
+     * Callers must guard with this before {@link #formatNumber(double)}.
+     */
+    private static boolean isFinite(Double value) {
+        return value != null && Double.isFinite(value);
+    }
+
+    /**
      * JSON number formatting matching the Contract §8 example: integral
      * values render without a decimal point (680, 85, 410), others with
-     * their natural decimal representation (0.7, 2.5).
+     * their natural decimal representation (0.7, 2.5). Callers guard
+     * non-finite values with {@link #isFinite(Double)} — a bare NaN or
+     * Infinity token is not valid JSON.
      */
     private static String formatNumber(double value) {
         if (value == Math.rint(value) && Math.abs(value) < 1.0e15) {

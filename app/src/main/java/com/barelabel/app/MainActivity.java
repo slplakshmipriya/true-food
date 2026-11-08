@@ -1312,15 +1312,14 @@ private void bindVerdictExplanation(ProductResult result, boolean isClean,
     explanationText.setVisibility(View.VISIBLE);
     explanationText.setText("Explaining…");
     final ProductResult forResult = result;
-    final boolean clean = isClean;
     final int score = cleanScore;
     // NUT-10: nutrition-aware explanation inputs. The analysis rides on
-    // the current primary result (null until the orchestration in NUT-05
+    // the result being bound (null until the orchestration in NUT-05
     // has run); the config load is a cached singleton. When the config
     // is unavailable the overall score is just the ingredient score —
     // OverallScoreCalculator.blend documents the same null behavior.
-    final NutritionAnalysis analysis = currentPrimaryResult != null
-            ? currentPrimaryResult.nutritionAnalysis : null;
+    final NutritionAnalysis analysis = result != null
+            ? result.nutritionAnalysis : null;
     final NutritionConfig nutritionConfig = NutritionConfigLoader.load(this);
     final int overallScore = nutritionConfig == null ? cleanScore
             : OverallScoreCalculator.blend(cleanScore,

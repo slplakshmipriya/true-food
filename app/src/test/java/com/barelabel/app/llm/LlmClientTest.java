@@ -406,4 +406,58 @@ public class LlmClientTest {
         assertTrue(LlmPrompts.EXPLAIN_NUTRITION_SYSTEM
                 .contains("Make no medical or disease claims"));
     }
+
+    @Test
+    public void buildNutritionPayloadNanPercentileIsOmitted()
+            throws Exception {
+        // Hand-built comparison: the analyzer never produces a NaN
+        // percentile, but a non-finite value must be treated as
+        // absent — a bare NaN token would corrupt the JSON payload.
+        Map<String, NutrientComparison> comparisons = new LinkedHashMap<>();
+        comparisons.put("sodium", comparison("sodium", 680.0, 21, 410.0,
+                85.0, Double.NaN, true, "relative_floor"));
+        NutritionAnalysis a = analysis(NutritionStatus.CONCERNING, 38,
+                comparisons, Collections.singletonList("sodium"));
+        String payload = VerdictExplainer.buildNutritionPayload(
+                productWithFlagged("soy lecithin"), 67, a, 58,
+                Arrays.asList(new VerdictExplainer.Flag("soy lecithin",
+                        "Emulsifiers")),
+                "potato, soy lecithin", Collections.<String>emptyList(),
+                Collections.<String>emptyList(), "", sodiumFiberConfig());
+        JSONObject root = new JSONObject(payload);
+        JSONObject sodium = root.getJSONArray("flagged_nutrients")
+                .getJSONObject(0);
+        assertFalse(sodium.has("favorable_percentile"));
+        assertEquals(85.0, sodium.getDouble("raw_percentile"), 0.0001);
+        assertFalse(payload.contains("NaN"));
+        assertFalse(payload.contains("Infinity"));
+    }
+
+    @Test
+    public void nutritionPromptMatchesContractTextExactly() {
+        // Full Contract §8 text, character for character.
+        String expected =
+                "You are a food label assistant in a food ingredient checker app."
+                + " The user has selected broad filters for ingredients they do not prefer."
+                + " You receive two deterministic verdicts: an ingredient verdict (CLEAN or DIRTY) with an ingredient "
+                + "score, and a nutrition status (SAFE or CONCERNING) with a nutrition score, plus an overall score "
+                + "blended from the two."
+                + " You also receive the flagged ingredients with categories, the flagged nutrients with amounts, peer "
+                + "percentiles and peer counts, a few nutrient highlights, the full ingredient list, the user's "
+                + "filters, superior ingredients present, and allergen advisory text."
+                + " Write a friendly summary in short, conversational sentences with few commas."
+                + " First state both verdicts and what the overall score means, using the component scores to explain it."
+                + " Then explain each flagged ingredient briefly: why it is bad or unsuitable given the user's filters."
+                + " Then cover the most material nutrition points, prioritizing flagged nutrients: say how the amount "
+                + "compares with similar products using the supplied percentiles, in plain words such as higher than "
+                + "most or lower than most. Do not recite every nutrient."
+                + " Keep ingredient reasons and nutrition reasons clearly separate."
+                + " Never contradict the supplied verdicts, scores, or flags."
+                + " Never mention an ingredient or nutrient that was not supplied. Never infer a missing value."
+                + " Make no medical or disease claims."
+                + " If the ingredient verdict is CLEAN, confirm it briefly and highlight the superior ingredients "
+                + "present and why they are good. Mention the allergen advisory when it is relevant."
+                + " Keep the whole summary under 110 words.";
+        assertEquals(expected, LlmPrompts.EXPLAIN_NUTRITION_SYSTEM);
+    }
 }
