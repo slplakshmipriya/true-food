@@ -749,11 +749,18 @@ private void refreshRecents() {
                 //    Everything runs on this background thread; any failure
                 //    degrades nutrition to UNAVAILABLE, never the search.
                 NutritionAnalysis primaryAnalysis = null;
+                List<CohortPeer> cohortPeers = Collections.emptyList();
                 try {
                     List<CohortPeer> seedPeers = NutritionCohortService
                             .seedPeersFromCandidates(candidates, nutritionConfig());
-                    primaryAnalysis = nutritionCohortService().analyzePrimary(
-                            primaryResult, seedPeers, foodType);
+                    NutritionCohortService.CohortResult cohortResult =
+                            nutritionCohortService().analyzePrimaryWithCohort(
+                                    primaryResult, seedPeers, foodType);
+                    primaryAnalysis = cohortResult.analysis;
+                    // Seeds + top-up peers actually collected: the
+                    // finder rebuilds the final cohort from these,
+                    // extended with its scanned pool (§5 step 5).
+                    cohortPeers = cohortResult.peers;
                 } catch (Exception ignored) {
                     // Best-effort only: a null analysis reads as UNAVAILABLE
                     // in the sourcing decision below.
@@ -783,9 +790,19 @@ private void refreshRecents() {
                         }
                     });
                     altSearch = alternateFinder.findCleanAlternates(
-                            foodType, apiCategory, categoryIntent, primaryResult, product);
+                            foodType, apiCategory, categoryIntent, primaryResult, product,
+                            primaryAnalysis, cohortPeers, nutritionConfig());
                 } else {
                     altSearch = new AlternateSearchResult();
+                }
+                // 6b. The finder refreshed the primary's analysis
+                //     against the final cohort (§5 step 5): adopt it
+                //     before UI binding so the verdict card, the
+                //     alternates ranking context, and the LLM summary
+                //     all read the final-cohort analysis.
+                if (altSearch.primaryAnalysis != null) {
+                    primaryAnalysis = altSearch.primaryAnalysis;
+                    primaryResult.nutritionAnalysis = altSearch.primaryAnalysis;
                 }
                 List<ProductResult> rawAlternates = altSearch.alternates;
                 alternatesController.setPool(rawAlternates, StringNormalizer.wordTokens(product),
