@@ -1,6 +1,7 @@
 package com.barelabel.app.news;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -95,11 +96,18 @@ public final class NewsMatcher {
         }
 
         // Order pubDate DESC, cap 3 (section 4).
+        // (Anonymous Comparator + Collections.sort, not
+        // Comparator.comparingLong / List.sort: those are API 24+ and
+        // the app's minSdk is 23 - precedent: NutritionPanelPartition.)
         List<RawNewsItem> survivors =
                 new ArrayList<>(newestByPrefix.values());
-        survivors.sort(Comparator
-                .comparingLong(RawNewsItem::getPubDateEpochMillis)
-                .reversed());
+        Collections.sort(survivors, new Comparator<RawNewsItem>() {
+            @Override
+            public int compare(RawNewsItem a, RawNewsItem b) {
+                return Long.compare(b.getPubDateEpochMillis(),
+                        a.getPubDateEpochMillis());
+            }
+        });
         if (survivors.size() > MAX_STORIES) {
             survivors = new ArrayList<>(
                     survivors.subList(0, MAX_STORIES));

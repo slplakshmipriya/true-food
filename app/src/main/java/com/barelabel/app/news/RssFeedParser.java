@@ -34,20 +34,18 @@ import javax.xml.parsers.DocumentBuilderFactory;
  */
 public final class RssFeedParser {
 
-    // XML parser feature identifiers (parser configuration names, not
-    // network endpoints). Each is assembled from two literals so the
-    // section 8 egress scan in tools/verify_news.py, which greps this
-    // package for URL-shaped strings, does not mistake a parser
-    // feature name for an endpoint.
+    // Standard Xerces/SAX parser feature URIs used for XXE hardening:
+    // DOCTYPE declarations are disallowed, and external general /
+    // parameter entities and external DTD loading are disabled, so a
+    // hostile feed cannot make the parser resolve external content.
     private static final String FEATURE_DISALLOW_DOCTYPE =
-            "http" + "://apache.org/xml/features/disallow-doctype-decl";
+            "http://apache.org/xml/features/disallow-doctype-decl";
     private static final String FEATURE_EXTERNAL_GENERAL_ENTITIES =
-            "http" + "://xml.org/sax/features/external-general-entities";
+            "http://xml.org/sax/features/external-general-entities";
     private static final String FEATURE_EXTERNAL_PARAMETER_ENTITIES =
-            "http" + "://xml.org/sax/features/external-parameter-entities";
+            "http://xml.org/sax/features/external-parameter-entities";
     private static final String FEATURE_LOAD_EXTERNAL_DTD =
-            "http" + "://apache.org/xml/features/nonvalidating/"
-                    + "load-external-dtd";
+            "http://apache.org/xml/features/nonvalidating/load-external-dtd";
 
     private static final String[] PUB_DATE_PATTERNS = {
             "EEE, dd MMM yyyy HH:mm:ss zzz",
