@@ -226,6 +226,19 @@
             android:textSize="14sp"
             android:textStyle="bold" />
 
+        <!-- Search safety count line (NA-05, Contract §6.2): shown only
+             when the current search has safety reports; GONE (no
+             reserved space) otherwise. Text is bound by SearchSafetyBinder. -->
+        <TextView
+            android:id="@+id/safetyCountLine"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="2dp"
+            android:layout_marginTop="8dp"
+            android:textColor="#CFE3D4"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
         <ProgressBar
             android:id="@+id/progress"
             android:layout_width="wrap_content"
