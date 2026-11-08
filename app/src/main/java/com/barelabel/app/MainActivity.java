@@ -80,10 +80,11 @@ import com.barelabel.app.search.DisambiguationDecider;
 import com.barelabel.app.search.NutritionCohortService;
 import com.barelabel.app.search.IngredientSectionExtractor;
 import com.barelabel.app.search.OcrCorrector;
-import com.barelabel.app.ui.AlternatesCardController;
-import com.barelabel.app.ui.CompareViewBuilder;
 import com.barelabel.app.news.SafetyAlert;
 import com.barelabel.app.news.SafetyAlertService;
+import com.barelabel.app.ui.AlternatesCardController;
+import com.barelabel.app.ui.CompareViewBuilder;
+import com.barelabel.app.ui.SearchSafetyBinder;
 import com.barelabel.app.ui.NutritionPanelController;
 import com.barelabel.app.ui.ProductDetailDialog;
 import com.barelabel.app.ui.SafetyReportsPanelController;
@@ -194,6 +195,14 @@ public class MainActivity extends AppCompatActivity {
      */
     private volatile int searchGeneration = 0;
 
+    // Search safety surface (NA-05, Contracts §6.2/§6.3/§6.5): count
+    // line under the SEARCH button + badges on disambiguation rows.
+    // All decisions live in the news package's pure presentation /
+    // state classes; the binder only renders them.
+    private TextView safetyCountLine;
+    private SearchSafetyBinder searchSafetyBinder;
+    private SafetyAlertService safetyAlertService;
+
     private final Set<String> superiorTerms = new HashSet<>();
 
     private final ActivityResultLauncher<Intent> ingredientScanLauncher = registerForActivityResult(
@@ -247,6 +256,7 @@ protected void onCreate(Bundle savedInstanceState) {
 
     // 1. Bind UI Components
     bindViews();
+    searchSafetyBinder = new SearchSafetyBinder(this, safetyCountLine);
     setupVerdictBubbleToggles();
 
     // 2. Load Superior Terms Engine Set
@@ -536,6 +546,7 @@ private void refreshRecents() {
         flaggedList = findViewById(R.id.flaggedList);
         recentsRecycler = findViewById(R.id.recentsRecycler);
         recentsLabel = findViewById(R.id.recentsLabel);
+        safetyCountLine = findViewById(R.id.safetyCountLine);
         skeletonCard = findViewById(R.id.skeletonCard);
 
         productTitleText = findViewById(R.id.productTitleText);
@@ -882,6 +893,53 @@ private void refreshRecents() {
         return nutritionCohortService;
     }
 
+    /** Lazily built NA-04 service (production clients, app cache dir). */
+    private synchronized SafetyAlertService safetyAlertService() {
+        if (safetyAlertService == null) {
+            safetyAlertService = new SafetyAlertService(this);
+        }
+        return safetyAlertService;
+    }
+
+    /**
+     * NA-05 alert fetch (Contract §6.5): runs on its own thread,
+     * concurrent with the USDA search in {@link #search()}. The
+     * service never throws (§7) and returns an empty list on any
+     * failure, which the binder renders as nothing at all; the
+     * binder's generation token drops the result if a newer search
+     * has superseded this one. No verdict, score, or history state
+     * is touched here (§6 guards / BL-S6), and no premium check
+     * exists on this path (BL-S7).
+     */
+    private void startSafetyAlertFetch(final String term) {
+        if (searchSafetyBinder == null) {
+            return;
+        }
+        final int safetyGeneration = searchSafetyBinder.beginSearch(term);
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                List<SafetyAlert> fetched;
+                try {
+                    fetched = safetyAlertService().alertsForSearch(term);
+                } catch (Throwable t) {
+                    fetched = Collections.emptyList();
+                }
+                final List<SafetyAlert> alerts = fetched != null
+                        ? fetched : Collections.<SafetyAlert>emptyList();
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (searchSafetyBinder != null) {
+                            searchSafetyBinder.applyAlerts(
+                                    safetyGeneration, alerts);
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
     private void search() {
         clearComparePicks();
         // Barcode-initiated searches name an exact product; they always go
@@ -910,6 +968,11 @@ private void refreshRecents() {
         // Every search bumps the generation; a slow earlier search's UI
         // posts are dropped once a newer search has started.
         final int generation = ++searchGeneration;
+
+        // NA-05 (§6.5): safety alerts fetch concurrently with the USDA
+        // search below; results render first, the count line and row
+        // badges insert when the alerts arrive.
+        startSafetyAlertFetch(product);
 
         // Collapse the filter panel into its summary bar once a search is issued.
         if (categoryFilterPanel != null && filterSummaryBar != null) {
@@ -1176,6 +1239,7 @@ private void refreshRecents() {
         alternatesController.hide();
         if (ingredientsCard != null) ingredientsCard.setVisibility(View.GONE);
         disambiguationList.removeAllViews();
+        if (searchSafetyBinder != null) searchSafetyBinder.clearRows();
         disambiguationSubtitle.setText(
                 "Top " + options.size() + " matches for \u201C" + query.trim() + "\u201D");
         for (ProductResult opt : options) {
@@ -1252,7 +1316,17 @@ private void refreshRecents() {
         pill.setTypeface(null, Typeface.BOLD);
         int pillH = dp(3), pillW = dp(8);
         pill.setPadding(pillW, pillH, pillW, pillH);
-        metaCol.addView(pill);
+        // NA-05 (§6.3): the pill sits in a horizontal pill row so the
+        // recall badge can insert beside it when alerts arrive; with
+        // no badge the row renders exactly as the bare pill did.
+        LinearLayout pillRow = new LinearLayout(this);
+        pillRow.setOrientation(LinearLayout.HORIZONTAL);
+        pillRow.setGravity(Gravity.CENTER_VERTICAL);
+        pillRow.addView(pill);
+        metaCol.addView(pillRow);
+        if (searchSafetyBinder != null) {
+            searchSafetyBinder.registerRow(pillRow, opt.brand, opt.name);
+        }
 
         TextView scoreView = new TextView(this);
         scoreView.setText(score + "/100");
@@ -2275,6 +2349,8 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
      * line are all suppressed.
      */
     private void showScannedLabelResult(ProductResult result) {
+        // Not a search surface (§6.1): no safety line or badges here.
+        if (searchSafetyBinder != null) searchSafetyBinder.clear();
         showResult(result, "Uncategorized", false,
                 Collections.emptySet(), Collections.emptyMap(), false, false);
         alternatesController.hide();
