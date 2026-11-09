@@ -87,6 +87,21 @@ public class BrandQueryDeciderTest {
     }
 
     @Test
+    public void tokens_titleBrandPreservationPattern() {
+        // The verdict card's OFF-name overwrite asks: does this title
+        // already carry the brand? Brand tokens include the
+        // possessive fragment, and both sides tokenize identically.
+        assertEquals(Arrays.asList("driscoll", "s"),
+                BrandQueryDecider.tokens("DRISCOLL'S"));
+        assertFalse(BrandQueryDecider.brandMatches(
+                "Strawberries fraises",
+                BrandQueryDecider.tokens("DRISCOLL'S")));
+        assertTrue(BrandQueryDecider.brandMatches(
+                "Driscoll's Strawberries",
+                BrandQueryDecider.tokens("DRISCOLL'S")));
+    }
+
+    @Test
     public void noBrandSurfaced_driscollAmongYogurts_true() {
         List<BrandQueryDecider.BrandAttempt> attempts =
                 BrandQueryDecider.attempts("driscoll Strawberries");

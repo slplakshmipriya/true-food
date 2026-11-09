@@ -128,7 +128,7 @@ public final class BrandQueryDecider {
     }
 
     /** Normalized tokens of a text, in order (lowercase alphanumerics). */
-    static List<String> tokens(String text) {
+    public static List<String> tokens(String text) {
         List<String> out = new ArrayList<>();
         if (text == null) {
             return out;

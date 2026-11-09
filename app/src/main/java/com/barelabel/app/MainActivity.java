@@ -75,6 +75,7 @@ import com.barelabel.app.nutrition.NutritionConfig;
 import com.barelabel.app.nutrition.NutritionConfigLoader;
 import com.barelabel.app.nutrition.OverallScoreCalculator;
 import com.barelabel.app.search.BarcodeSeed;
+import com.barelabel.app.search.BrandQueryDecider;
 import com.barelabel.app.search.CleanAlternateFinder;
 import com.barelabel.app.search.DisambiguationDecider;
 import com.barelabel.app.search.NutritionCohortService;
@@ -1625,8 +1626,24 @@ private void refreshRecents() {
                                 .into(productImageView);
                     }
                     if (info.hasName() && productTitleText != null) {
+                        // OFF's display name carries no brand (its
+                        // brands field is often empty — e.g. the
+                        // Driscoll's strawberries GTIN), so replacing
+                        // the title with it verbatim would strip the
+                        // " (BRAND)" suffix the initial bind added and
+                        // leave the card unidentifiable. Re-append the
+                        // USDA brand unless the OFF name already
+                        // carries it.
+                        String offTitle = info.displayName();
+                        String brand = verdictResult.brand;
+                        if (!TextUtils.isEmpty(brand)
+                                && !BrandQueryDecider.brandMatches(
+                                        offTitle,
+                                        BrandQueryDecider.tokens(brand))) {
+                            offTitle += " (" + brand + ")";
+                        }
                         productTitleText.setText(
-                                StringNormalizer.toTitleCase(info.displayName()));
+                                StringNormalizer.toTitleCase(offTitle));
                     }
                     // OFF data arrived after bind: re-evaluate the FTC
                     // disclosure, which may have been decided on a cold cache.
@@ -1641,6 +1658,35 @@ private void refreshRecents() {
     // recent-scan title) the USDA name lacks, or be a shorter substring.
     boolean isExactMatch = !userQuery.isEmpty() &&
             (resultName.contains(userQuery) || userQuery.contains(resultName));
+    if (!isExactMatch) {
+        // Brand+product queries ("driscoll Strawberries"): the USDA
+        // name alone can never contain the whole query — the brand
+        // lives in the record's brand fields, not its name — so the
+        // check above brands every such hit inexact, including the
+        // brand's own record. It IS exact when this record's brand
+        // matches the query's leading brand tokens and its name
+        // matches the remaining product part.
+        String rawQuery = searchBox.getText().toString();
+        for (BrandQueryDecider.BrandAttempt attempt
+                : BrandQueryDecider.attempts(rawQuery)) {
+            boolean brandOk = BrandQueryDecider.brandMatches(
+                            result.brand, attempt.brandTokens)
+                    || BrandQueryDecider.brandMatches(
+                            result.brandName, attempt.brandTokens)
+                    || BrandQueryDecider.brandMatches(
+                            result.brandOwner, attempt.brandTokens);
+            if (!brandOk) {
+                continue;
+            }
+            String productPart = normalizeForMatch(attempt.productQuery);
+            if (!productPart.isEmpty()
+                    && (resultName.contains(productPart)
+                        || productPart.contains(resultName))) {
+                isExactMatch = true;
+                break;
+            }
+        }
+    }
 
     if (matchNoticeText != null) {
         if (!isExactMatch) {
