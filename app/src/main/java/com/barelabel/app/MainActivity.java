@@ -2465,11 +2465,32 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
 
             final String finalProductName = BarcodeSeed.resolve(
                     usdaDescription, usdaBrand, offName, gtin);
+            // When the GTIN lookup hit, the exact record is already in
+            // hand — keep its id so the UI thread can fetch THAT record
+            // instead of degrading to a fuzzy text search (below).
+            final long matchFdcId = match != null ? match.optLong("fdcId", 0) : 0;
+            final String exactName = usdaDescription.trim();
             runOnUiThread(() -> {
                 if (progress != null) progress.setVisibility(View.GONE);
-                searchBox.setText(finalProductName);
-                pendingBarcodeSearch = true;
-                search();
+                if (matchFdcId > 0 && !exactName.isEmpty()) {
+                    // Exact record known: fetch it by id via the
+                    // tapped-suggestion state. The BarcodeSeed text seed
+                    // ("BROCCOLI (MAMBO)") matches no USDA description,
+                    // so the text re-search landed on an unrelated top
+                    // pick and the scanned/tapped product's verdict was
+                    // lost — this is the path GTIN-bearing clean-choice
+                    // rows (e.g. Mambo broccoli) take when tapped.
+                    selectedSuggestionFdcId = matchFdcId;
+                    selectedSuggestionLabel = exactName;
+                    searchBox.setText(exactName);
+                    search();
+                } else {
+                    // True GTIN data gap: seed the OFF name / raw digits
+                    // for the nearest-variant text search, as before.
+                    searchBox.setText(finalProductName);
+                    pendingBarcodeSearch = true;
+                    search();
+                }
             });
         }).start();
     }
