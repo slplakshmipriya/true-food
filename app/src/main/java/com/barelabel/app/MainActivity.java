@@ -401,13 +401,24 @@ setupCategoryFilterPanel();
             if (alt == null) return;
             // The tapped alternate becomes the next search candidate: exact
             // GTIN lookup when we have one (same path as a barcode scan),
-            // name search otherwise; then scroll its verdict into view.
+            // exact fdcId fetch when the record's id is known (same path
+            // as a tapped suggestion: the record behind the row, never a
+            // fuzzy re-search), bare-name search as the last resort. The
+            // old name fallback appended " (BRAND)", which matched no
+            // USDA description and landed on an unrelated top pick whose
+            // category panel then replaced the tapped product entirely
+            // (Broccoli (Mambo) -> "Clean options in Ketchup, Mustard,
+            // BBQ & Cheese Sauce").
             if (!TextUtils.isEmpty(alt.gtinUpc)) {
                 lookupBarcodeAndSearch(alt.gtinUpc.trim());
-            } else {
-                String q = alt.name == null ? "" : alt.name;
-                if (!TextUtils.isEmpty(alt.brand)) q = q + " (" + alt.brand + ")";
+            } else if (alt.fdcId > 0) {
+                String q = alt.name == null ? "" : alt.name.trim();
+                selectedSuggestionFdcId = alt.fdcId;
+                selectedSuggestionLabel = q;
                 searchBox.setText(q);
+                search();
+            } else {
+                searchBox.setText(alt.name == null ? "" : alt.name);
                 search();
             }
             NestedScrollView rootScroll = findViewById(R.id.mainRootLayout);
@@ -1042,7 +1053,13 @@ private void refreshRecents() {
 
                 // 2. Unbranded search intent: when the query does not name the product's
                 //    brand, treat it as a category search and always show clean choices.
-                boolean categoryIntent = isCategorySearch(product, primaryResult);
+                //    An fdcId fetch is exempt: it only happens when the user tapped one
+                //    specific product (a suggestion, or a clean-choice row via
+                //    onOpenAlternate), so its verdict must render even when the
+                //    product's name is a generic word like "Broccoli" — otherwise
+                //    tapping that row buries the very verdict the user asked for.
+                boolean categoryIntent = !fetchedById
+                        && isCategorySearch(product, primaryResult);
 
                 // 2b. Disambiguation for branded text searches: when the best
                 // title match is strong but inexact, offer the top choices
