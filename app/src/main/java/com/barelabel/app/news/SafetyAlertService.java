@@ -452,7 +452,7 @@ public final class SafetyAlertService {
             if (fdaAlerts == null || fdaAlerts.isEmpty()) {
                 return 0;
             }
-            Set<String> brandTokens = badgeTokens(brand);
+            Set<String> brandTokens = brandBadgeTokens(brand);
             if (brandTokens.isEmpty()) {
                 return 0;
             }
@@ -495,6 +495,93 @@ public final class SafetyAlertService {
     }
 
     /**
+     * Generic descriptor tokens: words that describe a food's form,
+     * quality, or marketing rather than identifying a brand. They
+     * appear in unrelated products' descriptions constantly, so as
+     * BRAND tokens they attribute other companies' recalls — the
+     * same failure family as the possessive fragment above and the
+     * generic category words of fix round 3. Device case
+     * (2026-11-09): the brand "365 WHOLE FOODS MARKET" tokenizes to
+     * include "whole", and Publix's "Organic Whole Blueberries"
+     * recalls (different firm, different UPCs) matched the 365
+     * brand on that word alone — where "whole" means un-cut fruit,
+     * not the retailer.
+     */
+    private static final Set<String> GENERIC_DESCRIPTOR_TOKENS;
+
+    static {
+        Set<String> words = new LinkedHashSet<>();
+        words.add("whole");
+        words.add("fresh");
+        words.add("organic");
+        words.add("natural");
+        words.add("naturals");
+        words.add("premium");
+        words.add("pure");
+        words.add("select");
+        words.add("selected");
+        words.add("original");
+        words.add("classic");
+        words.add("value");
+        words.add("great");
+        words.add("best");
+        words.add("quality");
+        words.add("daily");
+        words.add("golden");
+        words.add("healthy");
+        words.add("simply");
+        words.add("simple");
+        words.add("smart");
+        words.add("real");
+        words.add("true");
+        words.add("new");
+        words.add("fine");
+        words.add("finest");
+        words.add("prime");
+        words.add("choice");
+        words.add("supreme");
+        words.add("delicious");
+        words.add("nutritious");
+        words.add("lite");
+        words.add("light");
+        words.add("free");
+        words.add("raw");
+        words.add("wild");
+        words.add("sweet");
+        words.add("farm");
+        words.add("farms");
+        words.add("food");
+        words.add("foods");
+        words.add("market");
+        words.add("markets");
+        words.add("kitchen");
+        words.add("country");
+        words.add("royal");
+        words.add("happy");
+        words.add("good");
+        words.add("green");
+        GENERIC_DESCRIPTOR_TOKENS = Collections.unmodifiableSet(words);
+    }
+
+    /**
+     * Brand-side badge tokens: {@link #badgeTokens} minus the
+     * generic descriptor words above, so a brand is attributed only
+     * by a distinctive token ("365 WHOLE FOODS MARKET" attributes
+     * via "365"; "NEW SEASONS" via "seasons"). Fallback: when EVERY
+     * brand token is a descriptor (e.g. "RAW FARM"), the unfiltered
+     * set stands — a brand made only of generic words can still be
+     * attributed by them, rather than by nothing. Applies ONLY to
+     * FDA brand attribution (badge / count / brand filter); query
+     * intent detection (BrandQueryDecider) is unaffected.
+     */
+    private static Set<String> brandBadgeTokens(String brand) {
+        Set<String> tokens = badgeTokens(brand);
+        Set<String> distinctive = new LinkedHashSet<>(tokens);
+        distinctive.removeAll(GENERIC_DESCRIPTOR_TOKENS);
+        return distinctive.isEmpty() ? tokens : distinctive;
+    }
+
+    /**
      * The filtering twin of {@link #countFdaMatches}: the FDA alerts
      * that match the brand under the same per-alert badge rule, in
      * input order. Backs the brand-focused Safety reports section on
@@ -509,7 +596,7 @@ public final class SafetyAlertService {
             if (alerts == null || alerts.isEmpty()) {
                 return Collections.emptyList();
             }
-            Set<String> brandTokens = badgeTokens(brand);
+            Set<String> brandTokens = brandBadgeTokens(brand);
             if (brandTokens.isEmpty()) {
                 return Collections.emptyList();
             }

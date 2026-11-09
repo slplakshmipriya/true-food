@@ -704,6 +704,48 @@ public class SafetyAlertServiceTest {
     }
 
     @Test
+    public void badge_descriptorBrandToken_doesNotAttribute() {
+        // Regression (device QA 2026-11-09): Publix's "Organic Whole
+        // Blueberries" recalls (real FDA text, UPC 41415-06453)
+        // surfaced for the 365 Whole Foods Market blueberries
+        // product. The only shared brand token is "whole" — a
+        // generic descriptor (un-cut fruit), not the retailer.
+        // Generic descriptors no longer count as brand tokens.
+        List<SafetyAlert> alerts = Collections.singletonList(fdaAlert(
+                "Organic Whole Blueberries, Net Wt 10 oz (284g) plastic"
+                        + " bag, packed in 8 bags per case of 10 oz each."
+                        + " Keep Frozen UPC 41415-06453"));
+        assertFalse(SafetyAlertService.hasFdaBadge(
+                "365 WHOLE FOODS MARKET", "BLUEBERRIES", alerts));
+        assertEquals(0, SafetyAlertService.countFdaMatches(
+                "365 WHOLE FOODS MARKET", "BLUEBERRIES", alerts));
+        assertTrue(SafetyAlertService.filterBrandMatches(
+                "365 WHOLE FOODS MARKET", "BLUEBERRIES", alerts).isEmpty());
+    }
+
+    @Test
+    public void badge_distinctiveBrandToken_stillAttributes() {
+        // The same brand attributes fine via its distinctive token.
+        List<SafetyAlert> alerts = Collections.singletonList(fdaAlert(
+                "365 Whole Foods Market Organic Blueberries, frozen,"
+                        + " 32 oz bag"));
+        assertEquals(1, SafetyAlertService.countFdaMatches(
+                "365 WHOLE FOODS MARKET", "BLUEBERRIES", alerts));
+    }
+
+    @Test
+    public void badge_allDescriptorBrand_fallsBackToFullTokenSet() {
+        // A brand made ONLY of generic descriptors ("RAW FARM")
+        // keeps its full token set — attributing by generic words
+        // beats attributing by nothing.
+        List<SafetyAlert> alerts = Collections.singletonList(fdaAlert(
+                "RAW FARM RAW CHEDDAR SIMPLY SHREDDED Original"
+                        + " MADE WITH: WHOLE RAW MILK"));
+        assertTrue(SafetyAlertService.hasFdaBadge(
+                "RAW FARM", "Raw Cheddar", alerts));
+    }
+
+    @Test
     public void badge_nullAndEmptyInputs_false() {
         List<SafetyAlert> alerts = Collections.singletonList(
                 fdaAlert("Sunnyvale Organic Strawberries"));
