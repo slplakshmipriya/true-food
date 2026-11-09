@@ -11,6 +11,7 @@ import com.barelabel.app.model.ProductResult;
 import com.barelabel.app.nutrition.NutritionConfig;
 import com.barelabel.app.nutrition.NutritionConfigLoader;
 import com.barelabel.app.nutrition.UsdaNutritionParser;
+import com.barelabel.app.search.BrandQueryDecider;
 import com.barelabel.app.search.UsdaSpamFilter;
 
 import org.json.JSONArray;
@@ -229,7 +230,146 @@ public class UsdaApiClient {
                 candidates.add(f);
             }
         }
+        // Brand-aware fallback: when the query names a brand the
+        // plain search failed to surface, a brand-filtered outcome
+        // (when one exists) replaces this one.
+        SearchOutcome brandOutcome = tryBrandFallback(productName, ranked);
+        if (brandOutcome != null) {
+            return brandOutcome;
+        }
         return new SearchOutcome(result, candidates);
+    }
+
+    /**
+     * Brand-filtered retry for brand+product queries ("driscoll
+     * Strawberries"): USDA's text search effectively ignores the
+     * brand token — the query returns the product's full hit count,
+     * the first page carries none of the brand's records, and the
+     * top pick lands on an unrelated product (strawberry yogurt).
+     * When no ranked candidate's brand matches the query's leading
+     * tokens ({@link BrandQueryDecider}), each brand attempt is
+     * fetched through the API's brandOwner field and post-filtered
+     * by exact brand-token containment (the field itself matches
+     * loosely). The first attempt with a usable, on-brand, non-spam
+     * pick wins. Any failure returns null — the plain outcome
+     * stands, so the fallback can never break a search.
+     */
+    private SearchOutcome tryBrandFallback(String query,
+                                           List<JSONObject> rankedPlain) {
+        try {
+            List<BrandQueryDecider.BrandAttempt> attempts =
+                    BrandQueryDecider.attempts(query);
+            if (attempts.isEmpty()) {
+                return null;
+            }
+            List<String> candidateBrands = new ArrayList<>();
+            for (JSONObject f : rankedPlain) {
+                candidateBrands.add(f.optString("brandName", ""));
+                candidateBrands.add(f.optString("brandOwner", ""));
+            }
+            if (!BrandQueryDecider.noBrandSurfaced(candidateBrands, attempts)) {
+                return null;
+            }
+            for (BrandQueryDecider.BrandAttempt attempt : attempts) {
+                JSONArray foods = fetchBrandFoods(
+                        attempt.brandOwner, attempt.productQuery);
+                if (foods == null || foods.length() == 0) {
+                    continue;
+                }
+                List<JSONObject> survivors = new ArrayList<>();
+                for (int i = 0; i < foods.length(); i++) {
+                    JSONObject f = foods.optJSONObject(i);
+                    if (f == null
+                            || UsdaSpamFilter.isSpamBrand(
+                                    f.optString("brandOwner", ""))) {
+                        continue;
+                    }
+                    if (BrandQueryDecider.brandMatches(
+                                    f.optString("brandName", ""),
+                                    attempt.brandTokens)
+                            || BrandQueryDecider.brandMatches(
+                                    f.optString("brandOwner", ""),
+                                    attempt.brandTokens)) {
+                        survivors.add(f);
+                    }
+                }
+                if (survivors.isEmpty()) {
+                    continue;
+                }
+                JSONArray survivorArray = new JSONArray(survivors);
+                List<JSONObject> ranked = UsdaSpamFilter.rankedCandidates(
+                        survivorArray, attempt.productQuery);
+                JSONObject chosen = selectTopPick(survivorArray, ranked);
+                if (chosen == null
+                        || UsdaSpamFilter.isSpamBrand(
+                                chosen.optString("brandOwner", ""))) {
+                    continue;
+                }
+                ProductResult result = buildProductResult(chosen, query);
+                result.queryCategory = majorityFoodCategory(ranked);
+                List<JSONObject> candidates = new ArrayList<>();
+                for (JSONObject f : ranked) {
+                    if (!UsdaSpamFilter.isSpamBrand(
+                            f.optString("brandOwner", ""))) {
+                        candidates.add(f);
+                    }
+                }
+                return new SearchOutcome(result, candidates);
+            }
+        } catch (Exception ignored) {
+            // Best-effort only: the plain outcome stands.
+        }
+        return null;
+    }
+
+    /**
+     * One brand-filtered search page (POST foods/search with the
+     * brandOwner field), through the 7-day disk cache. Returns the
+     * foods array, or null when the response carries none.
+     */
+    public JSONArray fetchBrandFoods(String brandOwner, String productQuery)
+            throws Exception {
+        String cacheKey = "usda_brandsearch_"
+                + WS_UNDERSCORE.matcher(brandOwner.toLowerCase().trim()).replaceAll("_")
+                + "_"
+                + WS_UNDERSCORE.matcher(productQuery.toLowerCase().trim()).replaceAll("_");
+
+        String body = UsdaResponseCache.get(appContext, cacheKey);
+        if (body == null) {
+            final JSONObject payload = new JSONObject();
+            payload.put("query", productQuery);
+            payload.put("dataType", new JSONArray().put("Branded"));
+            payload.put("pageSize", 25);
+            payload.put("pageNumber", 1);
+            payload.put("brandOwner", brandOwner);
+            final byte[] payloadBytes =
+                    payload.toString().getBytes(StandardCharsets.UTF_8);
+
+            body = executeWithRetry(() -> {
+                HttpURLConnection c = (HttpURLConnection) new URL(
+                        BASE_URL + "?api_key=" + BuildConfig.USDA_API_KEY).openConnection();
+                c.setConnectTimeout(10000);
+                c.setReadTimeout(15000);
+                c.setRequestMethod("POST");
+                c.setRequestProperty("Content-Type", "application/json");
+                c.setRequestProperty("User-Agent", USER_AGENT);
+                c.setDoOutput(true);
+                try (OutputStream os = c.getOutputStream()) {
+                    os.write(payloadBytes);
+                }
+                return c;
+            });
+
+            if (!TextUtils.isEmpty(body)) {
+                UsdaResponseCache.put(appContext, cacheKey, body);
+            }
+        }
+
+        if (TextUtils.isEmpty(body)) {
+            return null;
+        }
+        JSONObject root = new JSONObject(body);
+        return root.optJSONArray("foods");
     }
 
     /**
