@@ -441,6 +441,67 @@ public class SafetyAlertServiceTest {
     }
 
     @Test
+    public void productMatchTokens_namePlusCuratedCategoryKeysOnly() {
+        // Fix round 3: generic category words are not match keys;
+        // the curated category-map key ("chicken") is.
+        Set<String> tokens = SafetyAlertService.productMatchTokens(
+                "STRAWBERRIES FRAISES", "Pre-Packaged Fruit & Vegetables");
+        assertTrue(tokens.contains("strawberries"));
+        assertTrue(tokens.contains("fraises"));
+        assertFalse(tokens.contains("vegetable"));
+        assertFalse(tokens.contains("vegetables"));
+        assertFalse(tokens.contains("fruit"));
+        assertFalse(tokens.contains("packaged"));
+        Set<String> chicken = SafetyAlertService.productMatchTokens(
+                "Grilled Strips", "Chicken products");
+        assertTrue(chicken.contains("grilled"));
+        assertTrue(chicken.contains("chicken"));
+        assertFalse(chicken.contains("products"));
+    }
+
+    @Test
+    public void productMatching_genericCategoryToken_fetchesButDoesNotMatch() {
+        // Regression (device QA 2026-11-09): the Driscoll's record
+        // ("STRAWBERRIES FRAISES", category "Pre-Packaged Fruit &
+        // Vegetables") surfaced Raw Farm RAW CHEDDAR recalls on its
+        // card — the cheddar descriptions contain the whole token
+        // "vegetable" ("VEGETABLE RENNET", real record text). The
+        // category token must still be FETCHED (fetch widening) but
+        // can no longer MATCH, on either source.
+        TermSensitiveFakeFdaSource fda = new TermSensitiveFakeFdaSource();
+        fda.byTerm.put("strawberry", Collections.singletonList(fdaRecord(
+                "Frutas y Hortalizas del Sur S.A.",
+                "Organic Triple Berry Blend Strawberries, Blackberries"
+                        + " & Blueberries",
+                "Potential E. coli O145:H28 Contamination", "Class I",
+                "Ongoing", 20260923, "ev-berry", "F-1001-2026")));
+        fda.byTerm.put("vegetable", Collections.singletonList(fdaRecord(
+                "Raw Farm LLC",
+                "RAW FARM RAW CHEDDAR SIMPLY SHREDDED Original"
+                        + " INGREDIENTS: WHOLE RAW MILK, VEGETABLE RENNET,"
+                        + " CULTURES, KOSHER SEA SALT",
+                "Multi-state outbreak of E. coli O157:H7", "Class I",
+                "Ongoing", 20260513, "ev-cheddar", "F-1002-2026")));
+        TermSensitiveFakeNewsSource news = new TermSensitiveFakeNewsSource();
+        news.byTerm.put("vegetable", Collections.singletonList(
+                new RawNewsItem(
+                        "Vegetable recall expands after contamination fears",
+                        "Example News", "veg-news-link", REF_EPOCH)));
+        List<SafetyAlert> alerts = new SafetyAlertService(fda, news)
+                .alertsForProduct("STRAWBERRIES FRAISES",
+                        "Pre-Packaged Fruit & Vegetables",
+                        REF_DATE, REF_EPOCH);
+        // Fetch widening intact: the category token reached both
+        // sources as a fetch term.
+        assertTrue(fda.termsSeen.contains("vegetable"));
+        assertTrue(news.termsSeen.contains("vegetable"));
+        // Only the name-token match survives.
+        assertEquals(1, alerts.size());
+        assertEquals(SafetyAlert.Tier.FDA, alerts.get(0).tier);
+        assertTrue(alerts.get(0).productText.contains("Triple Berry"));
+    }
+
+    @Test
     public void productDedupe_sameFdaRecordForTwoTokens_appearsOnce() {
         // The same record (same event_id + recall_number) is
         // returned for BOTH the "grilled" and the "strip" token

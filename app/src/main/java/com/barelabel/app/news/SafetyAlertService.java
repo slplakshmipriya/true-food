@@ -157,6 +157,9 @@ public final class SafetyAlertService {
     /**
      * Token set for a product card: tokens of the product name PLUS
      * tokens of its USDA category string (Contract section 3.1).
+     * Retained as the section 3.1 definition; MATCHING a product's
+     * alerts now uses the tightened set from
+     * {@link #productMatchTokens} (fix round 3, see there).
      */
     public static Set<String> queryTokensForProduct(String productName,
                                                     String usdaCategory) {
@@ -164,6 +167,50 @@ public final class SafetyAlertService {
             Set<String> out = new LinkedHashSet<>();
             out.addAll(NewsText.queryTokens(productName));
             out.addAll(NewsText.queryTokens(usdaCategory));
+            return Collections.unmodifiableSet(out);
+        } catch (Throwable t) {
+            return Collections.emptySet();
+        }
+    }
+
+    /**
+     * The token set a product's alerts are MATCHED against (fix
+     * round 3): the product NAME tokens, plus only those category
+     * tokens that are curated food-identity terms — keys of the
+     * section 3.2 category map (today: "chicken", whose expansion
+     * "poultry" the FDA matcher adds). Every other category token
+     * still widens the FETCH (see {@link #fetchTokensForProduct})
+     * but can no longer make a record a "match" by itself.
+     *
+     * <p>Why: the section 3.1 any-token rule let a category's
+     * generic vocabulary act as evidence. The Driscoll's
+     * strawberries record sits in USDA category "Pre-Packaged Fruit
+     * &amp; Vegetables"; its card surfaced three Raw Farm RAW
+     * CHEDDAR recalls because the cheddar ingredient lists contain
+     * the whole token "vegetable" ("VEGETABLE RENNET"). Generic
+     * category words (fruit, vegetable, packaged, products) appear
+     * in unrelated products' descriptions far too often to identify
+     * a food. The curated map keys are the exception: they exist
+     * precisely to carry a food's identity when the product name
+     * cannot (a "Grilled Strips" product whose category "Chicken
+     * products" must still match poultry recalls).
+     */
+    public static Set<String> productMatchTokens(String productName,
+                                                 String usdaCategory) {
+        try {
+            Set<String> out = new LinkedHashSet<>(
+                    queryTokensForSearch(productName));
+            if (usdaCategory != null) {
+                for (String raw : NewsText.tokens(usdaCategory)) {
+                    String folded = NewsText.foldToken(raw);
+                    if (FdaRecallMatcher.CATEGORY_MAP.containsKey(raw)
+                            || FdaRecallMatcher.CATEGORY_MAP
+                                    .containsKey(folded)) {
+                        out.add(raw);
+                        out.add(folded);
+                    }
+                }
+            }
             return Collections.unmodifiableSet(out);
         } catch (Throwable t) {
             return Collections.emptySet();
@@ -293,13 +340,13 @@ public final class SafetyAlertService {
     }
 
     /**
-     * Combined alerts for a product: the token set is the product
-     * name tokens plus the USDA category tokens (section 3.1), and
-     * the sources are fetched PER FETCH TOKEN (see
-     * {@link #fetchTokensForProduct}) — never with the raw product
-     * name — then matched once against the full token set.
-     * Ordering and the never-throws boundary are as for
-     * {@link #alertsForSearch}.
+     * Combined alerts for a product: the sources are fetched PER
+     * FETCH TOKEN (see {@link #fetchTokensForProduct}) — never with
+     * the raw product name — then matched once against the product
+     * MATCH token set (see {@link #productMatchTokens}: name tokens
+     * plus curated identity category tokens; generic category words
+     * fetch but do not match, fix round 3). Ordering and the
+     * never-throws boundary are as for {@link #alertsForSearch}.
      */
     public List<SafetyAlert> alertsForProduct(String productName,
                                               String usdaCategory,
@@ -307,7 +354,7 @@ public final class SafetyAlertService {
                                               long referenceEpochMillis) {
         try {
             Set<String> tokens =
-                    queryTokensForProduct(productName, usdaCategory);
+                    productMatchTokens(productName, usdaCategory);
             if (tokens.isEmpty()) {
                 return Collections.emptyList();
             }

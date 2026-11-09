@@ -1317,6 +1317,33 @@ private void refreshRecents() {
                 final Map<String, Integer> finalReliefCounts = altSearch.filterBlockCounts;
                 runOnUiThread(() -> {
                     if (generation != searchGeneration) return; // superseded
+                    // Typed brand+product searches ("driscoll
+                    // Strawberries") get the brand-focused safety
+                    // section too, not just brand-panel taps: when
+                    // the query's leading tokens name the primary's
+                    // brand, the section lists only that brand's
+                    // recalls. For a brand with none (Driscoll's),
+                    // the section simply does not appear, instead of
+                    // showing unrelated product-level recalls under
+                    // that brand's card.
+                    if (activeBrandFocus == null
+                            && !TextUtils.isEmpty(primaryResult.brand)) {
+                        for (BrandQueryDecider.BrandAttempt attempt
+                                : BrandQueryDecider.attempts(product)) {
+                            if (BrandQueryDecider.brandMatches(
+                                            primaryResult.brand,
+                                            attempt.brandTokens)
+                                    || BrandQueryDecider.brandMatches(
+                                            primaryResult.brandName,
+                                            attempt.brandTokens)
+                                    || BrandQueryDecider.brandMatches(
+                                            primaryResult.brandOwner,
+                                            attempt.brandTokens)) {
+                                activeBrandFocus = primaryResult.brand;
+                                break;
+                            }
+                        }
+                    }
                     showResult(primaryResult, finalCategory, finalCategoryIntent,
                             finalFlaggedCategories, finalReliefCounts, fetchedById, true);
                 });
