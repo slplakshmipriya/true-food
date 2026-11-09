@@ -388,20 +388,34 @@ public final class SafetyAlertService {
      */
     public static boolean hasFdaBadge(String brand, String productName,
                                       List<SafetyAlert> fdaAlerts) {
+        return countFdaMatches(brand, productName, fdaAlerts) > 0;
+    }
+
+    /**
+     * The counting twin of {@link #hasFdaBadge}: how many FDA alerts
+     * match the product under the same per-alert rule (brand token
+     * AND a non-brand name token in the alert's normalized product
+     * description). Backs the brand panel's per-brand recall count.
+     * NEWS alerts never count. Null or empty inputs yield 0. Never
+     * throws.
+     */
+    public static int countFdaMatches(String brand, String productName,
+                                      List<SafetyAlert> fdaAlerts) {
         try {
             if (fdaAlerts == null || fdaAlerts.isEmpty()) {
-                return false;
+                return 0;
             }
             Set<String> brandTokens = NewsText.tokenSet(brand);
             if (brandTokens.isEmpty()) {
-                return false;
+                return 0;
             }
             Set<String> otherNameTokens =
                     new LinkedHashSet<>(NewsText.tokenSet(productName));
             otherNameTokens.removeAll(brandTokens);
             if (otherNameTokens.isEmpty()) {
-                return false;
+                return 0;
             }
+            int count = 0;
             for (SafetyAlert alert : fdaAlerts) {
                 if (alert == null
                         || alert.tier != SafetyAlert.Tier.FDA
@@ -414,12 +428,12 @@ public final class SafetyAlertService {
                     continue;
                 }
                 if (containsAny(descriptionTokens, otherNameTokens)) {
-                    return true;
+                    count++;
                 }
             }
-            return false;
+            return count;
         } catch (Throwable t) {
-            return false;
+            return 0;
         }
     }
 

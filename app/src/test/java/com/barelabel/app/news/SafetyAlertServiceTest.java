@@ -7,6 +7,7 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
@@ -655,6 +656,61 @@ public class SafetyAlertServiceTest {
                 Collections.<SafetyAlert>emptyList()));
         assertFalse(SafetyAlertService.hasFdaBadge(
                 "", "", alerts));
+    }
+
+    // ------------------------------------------------------------------
+    // Recall counting (brand panel): the counting twin of the badge rule
+    // ------------------------------------------------------------------
+
+    @Test
+    public void count_twoMatchingFdaAlerts_countsTwo() {
+        List<SafetyAlert> alerts = Arrays.asList(
+                fdaAlert("Sunnyvale Organic Strawberries, 16 oz"),
+                fdaAlert("SUNNYVALE STRAWBERRIES — expanded recall"),
+                fdaAlert("Sunnyvale apple juice, 64 oz"),
+                fdaAlert("Organic strawberries grown in California"));
+        assertEquals(2, SafetyAlertService.countFdaMatches(
+                "Sunnyvale", "Sunnyvale Organic Strawberries", alerts));
+    }
+
+    @Test
+    public void count_newsAlertsNeverCount_zero() {
+        SafetyAlert news = new SafetyAlert(SafetyAlert.Tier.NEWS,
+                "Sunnyvale strawberries recalled", null, null, "meta",
+                "News report", "story-link", null, null, null, null,
+                20261107);
+        assertEquals(0, SafetyAlertService.countFdaMatches("Sunnyvale",
+                "Sunnyvale Organic Strawberries",
+                Collections.singletonList(news)));
+    }
+
+    @Test
+    public void count_nullAndEmptyInputs_zero() {
+        List<SafetyAlert> alerts = Collections.singletonList(
+                fdaAlert("Sunnyvale Organic Strawberries"));
+        assertEquals(0, SafetyAlertService.countFdaMatches(
+                null, "Sunnyvale Organic Strawberries", alerts));
+        assertEquals(0, SafetyAlertService.countFdaMatches(
+                "Sunnyvale", null, alerts));
+        assertEquals(0, SafetyAlertService.countFdaMatches(
+                "Sunnyvale", "Sunnyvale Organic Strawberries", null));
+        assertEquals(0, SafetyAlertService.countFdaMatches(
+                "Sunnyvale", "Sunnyvale Organic Strawberries",
+                Collections.<SafetyAlert>emptyList()));
+    }
+
+    @Test
+    public void count_agreesWithBadgeRule() {
+        List<SafetyAlert> matching = Collections.singletonList(
+                fdaAlert("Sunnyvale Organic Strawberries, 16 oz"));
+        List<SafetyAlert> notMatching = Collections.singletonList(
+                fdaAlert("Sunnyvale apple juice, 64 oz"));
+        assertTrue(SafetyAlertService.countFdaMatches(
+                "Sunnyvale", "Sunnyvale Organic Strawberries",
+                matching) > 0);
+        assertEquals(0, SafetyAlertService.countFdaMatches(
+                "Sunnyvale", "Sunnyvale Organic Strawberries",
+                notMatching));
     }
 
     @Test

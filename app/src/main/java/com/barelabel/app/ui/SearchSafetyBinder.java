@@ -114,15 +114,20 @@ public final class SearchSafetyBinder {
      * superseded search are dropped by the state and change
      * nothing. On an applied fetch, the count line and any pending
      * row badges insert together.
+     *
+     * @return true when the fetch was accepted for the current
+     *         search (callers may fan the same alerts out to other
+     *         surfaces, e.g. the brand panel's recall pills)
      */
-    public void applyAlerts(int generation, List<SafetyAlert> alerts) {
+    public boolean applyAlerts(int generation, List<SafetyAlert> alerts) {
         if (!state.applyAlerts(generation, alerts)) {
-            return;
+            return false;
         }
         renderCountLine();
         for (RowBinding binding : rows) {
             renderBadge(binding);
         }
+        return true;
     }
 
     /** Renders the section 6.2 count line from the current state. */

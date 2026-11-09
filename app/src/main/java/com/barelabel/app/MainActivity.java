@@ -939,6 +939,9 @@ private void refreshRecents() {
             return;
         }
         final int safetyGeneration = searchSafetyBinder.beginSearch(term);
+        if (alternatesController != null) {
+            alternatesController.clearSafetyAlerts();
+        }
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -954,8 +957,13 @@ private void refreshRecents() {
                     @Override
                     public void run() {
                         if (searchSafetyBinder != null) {
-                            searchSafetyBinder.applyAlerts(
+                            boolean accepted = searchSafetyBinder.applyAlerts(
                                     safetyGeneration, alerts);
+                            if (accepted && alternatesController != null) {
+                                // Brand panel recall pills ride the
+                                // same accepted fetch (§6.5 arrival).
+                                alternatesController.applySafetyAlerts(alerts);
+                            }
                         }
                     }
                 });
@@ -1391,6 +1399,12 @@ private void refreshRecents() {
                             Set<String> flaggedCategories, Map<String, Integer> reliefCounts,
                             boolean fetchedById, boolean saveToHistory) {
         currentPrimaryResult = result;
+        // The brand panel's title label ("Brands of Broccoli") comes
+        // from the search box: for typed category searches it holds
+        // the query; fetched-by-id flows are branded, where the
+        // panel never fires.
+        final String queryLabel = searchBox != null
+                ? searchBox.getText().toString() : "";
         clearComparePicks();
         resetVerdictPanels();
         if (disambiguationCard != null) disambiguationCard.setVisibility(View.GONE);
@@ -1408,7 +1422,7 @@ private void refreshRecents() {
     if (hidePrimary) {
         if (resultCard != null) resultCard.setVisibility(View.GONE);
         alternatesController.show(foodType, true, true, flaggedCategories,
-                countActiveFilters(), reliefCounts);
+                countActiveFilters(), reliefCounts, queryLabel);
         updateSourceLine();
         updateStickyBar();
         return;
@@ -1643,7 +1657,7 @@ private void refreshRecents() {
     //    verdict renders this card in branded mode, so its empty state
     //    reads "for this item" instead of naming the category.
     alternatesController.show(foodType, hidePrimary, isClean, flaggedCategories,
-            countActiveFilters(), reliefCounts);
+            countActiveFilters(), reliefCounts, queryLabel);
     updateSourceLine();
     updateStickyBar();
 }
@@ -2397,6 +2411,7 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
     private void showScannedLabelResult(ProductResult result) {
         // Not a search surface (§6.1): no safety line or badges here.
         if (searchSafetyBinder != null) searchSafetyBinder.clear();
+        if (alternatesController != null) alternatesController.clearSafetyAlerts();
         showResult(result, "Uncategorized", false,
                 Collections.emptySet(), Collections.emptyMap(), false, false);
         alternatesController.hide();

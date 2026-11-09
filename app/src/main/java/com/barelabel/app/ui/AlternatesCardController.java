@@ -3,6 +3,7 @@ package com.barelabel.app.ui;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
@@ -24,9 +25,12 @@ import com.barelabel.app.FlaggedIngredientManager;
 import com.barelabel.app.NutrientDelta;
 import com.barelabel.app.R;
 import com.barelabel.app.model.ProductResult;
+import com.barelabel.app.news.SafetyAlert;
+import com.barelabel.app.news.SafetyAlertService;
 import com.barelabel.app.nutrition.NutritionAnalysis;
 import com.barelabel.app.nutrition.NutritionConfig;
 import com.barelabel.app.pricing.PriceFetcher;
+import com.barelabel.app.util.BrandPanelDecider;
 import com.barelabel.app.util.StringNormalizer;
 
 import java.util.ArrayList;
@@ -80,6 +84,8 @@ public class AlternatesCardController {
     private static final int C_GRAY_700 = Color.parseColor("#374151");
     private static final int C_GRAY_900 = Color.parseColor("#111827");
     private static final int C_WHITE = Color.parseColor("#FFFFFF");
+    /** Verdict-card mint, used by the brand panel's spotlight block. */
+    private static final int C_MINT = Color.parseColor("#E7F5EA");
 
     private final AppCompatActivity activity;
     private final View card;
@@ -88,6 +94,10 @@ public class AlternatesCardController {
     private final View exactPanel;
     private final TextView exactTitle;
     private final com.google.android.flexbox.FlexboxLayout exactList;
+    /** Scroll container wrapping {@link #exactList}; hidden in brand mode. */
+    private final View exactScroll;
+    /** Brand panel container inside the exact panel (brand mode). */
+    private final LinearLayout brandList;
     private final View morePanel;
     private final TextView moreTitle;
     private final com.google.android.flexbox.FlexboxLayout moreList;
@@ -188,6 +198,15 @@ public class AlternatesCardController {
     private int lastExactCount = 0;
     private int lastMoreCount = 0;
 
+    // Brand panel (Option C): raw query label for the panel title,
+    // the live pill views with their brand entries, and the last
+    // safety alerts applied (re-rendered across organic re-ranks).
+    private String currentProductLabel = "";
+    private final List<TextView> brandPillViews = new ArrayList<>();
+    private final List<BrandPanelDecider.BrandEntry> brandPillEntries =
+            new ArrayList<>();
+    private List<SafetyAlert> lastSafetyAlerts = null;
+
     public AlternatesCardController(AppCompatActivity activity, View card, TextView title,
                                     TextView text, SwitchCompat organicSwitch,
                                     BuyListener buyListener) {
@@ -201,6 +220,9 @@ public class AlternatesCardController {
         this.exactPanel = card.findViewById(R.id.exactMatchesPanel);
         this.exactTitle = card.findViewById(R.id.exactMatchesTitle);
         this.exactList = card.findViewById(R.id.exactMatchesList);
+        this.exactScroll = this.exactList != null
+                ? (View) this.exactList.getParent() : null;
+        this.brandList = card.findViewById(R.id.brandPanelList);
         this.morePanel = card.findViewById(R.id.moreOptionsPanel);
         this.moreTitle = card.findViewById(R.id.moreOptionsTitle);
         this.moreList = card.findViewById(R.id.moreOptionsList);
@@ -436,6 +458,19 @@ public class AlternatesCardController {
     public void show(String foodType, boolean categoryIntent, boolean isClean,
                      Set<String> flaggedCategories, int activeFilterCount,
                      Map<String, Integer> reliefCounts) {
+        show(foodType, categoryIntent, isClean, flaggedCategories,
+                activeFilterCount, reliefCounts, "");
+    }
+
+    /**
+     * As {@link #show(String, boolean, boolean, Set, int, Map)}, plus
+     * the raw search query: when the brand panel fires for a category
+     * search, its title is built from it ("Brands of Broccoli").
+     */
+    public void show(String foodType, boolean categoryIntent, boolean isClean,
+                     Set<String> flaggedCategories, int activeFilterCount,
+                     Map<String, Integer> reliefCounts, String productLabel) {
+        currentProductLabel = productLabel != null ? productLabel : "";
         showInternal(foodType, categoryIntent, isClean, flaggedCategories,
                 activeFilterCount, reliefCounts, false);
     }
@@ -471,8 +506,16 @@ public class AlternatesCardController {
                 String moreHeading = TextUtils.isEmpty(foodType)
                         ? "Clean options"
                         : "Clean options in " + foodType;
-                bindStack(exactPanel, exactTitle, exactList, "Exact matches",
-                        exactRanked, exactRanked.size());
+                BrandPanelDecider.BrandPanelModel brandModel =
+                        BrandPanelDecider.decide(categoryIntent,
+                                currentProductLabel, exactRanked);
+                if (brandModel != null) {
+                    bindBrandPanel(brandModel);
+                } else {
+                    clearBrandPanel();
+                    bindStack(exactPanel, exactTitle, exactList, "Exact matches",
+                            exactRanked, exactRanked.size());
+                }
                 bindStack(morePanel, moreTitle, moreList, moreHeading,
                         moreRanked, OFFERS_ROW_COUNT);
 
@@ -696,6 +739,281 @@ public class AlternatesCardController {
     private void hideStackPanels() {
         if (exactPanel != null) exactPanel.setVisibility(View.GONE);
         if (morePanel != null) morePanel.setVisibility(View.GONE);
+        clearBrandPanel();
+    }
+
+    // ------------------------------------------------------------------
+    // Brand panel (Option C — top brand spotlight)
+    // ------------------------------------------------------------------
+
+    /**
+     * Renders the brand panel inside the exact panel: the product
+     * carousel hides, the title becomes "Brands of &lt;Product&gt;",
+     * and the top brand gets a mint spotlight block above compact
+     * rows for the rest. Recall pills start hidden and fill in when
+     * the search's safety alerts arrive ({@link #applySafetyAlerts}).
+     */
+    private void bindBrandPanel(BrandPanelDecider.BrandPanelModel model) {
+        if (brandList == null || exactPanel == null) {
+            return;
+        }
+        exactPanel.setVisibility(View.VISIBLE);
+        if (exactTitle != null) {
+            exactTitle.setText(model.title);
+        }
+        if (exactScroll != null) {
+            exactScroll.setVisibility(View.GONE);
+        }
+        brandList.removeAllViews();
+        brandPillViews.clear();
+        brandPillEntries.clear();
+
+        Context ctx = activity;
+        TextView subtitle = new TextView(ctx);
+        subtitle.setText("The same product from " + model.brands.size()
+                + " brands — tap a brand for its verdict");
+        subtitle.setTextColor(C_GRAY_500);
+        subtitle.setTextSize(13f);
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        subLp.bottomMargin = dp(10);
+        subtitle.setLayoutParams(subLp);
+        brandList.addView(subtitle);
+
+        for (int i = 0; i < model.brands.size(); i++) {
+            BrandPanelDecider.BrandEntry entry = model.brands.get(i);
+            if (i == 0) {
+                brandList.addView(buildBrandSpotlight(ctx, entry));
+            } else {
+                brandList.addView(buildBrandDivider());
+                brandList.addView(buildBrandRow(ctx, entry));
+            }
+        }
+        brandList.setVisibility(View.VISIBLE);
+        renderBrandRecallPills();
+    }
+
+    /** Leaves brand mode: panel container emptied, carousel restored. */
+    private void clearBrandPanel() {
+        if (brandList != null) {
+            brandList.removeAllViews();
+            brandList.setVisibility(View.GONE);
+        }
+        brandPillViews.clear();
+        brandPillEntries.clear();
+        if (exactScroll != null) {
+            exactScroll.setVisibility(View.VISIBLE);
+        }
+    }
+
+    /**
+     * Applies the current search's safety alerts to the brand recall
+     * pills (called by the host when the alert fetch is accepted for
+     * the current search). Stored so an organic re-rank re-renders
+     * the counts without a new fetch.
+     */
+    public void applySafetyAlerts(List<SafetyAlert> alerts) {
+        lastSafetyAlerts = alerts;
+        renderBrandRecallPills();
+    }
+
+    /** Drops the stored alerts (a new search / non-search flow). */
+    public void clearSafetyAlerts() {
+        lastSafetyAlerts = null;
+    }
+
+    private void renderBrandRecallPills() {
+        if (lastSafetyAlerts == null) {
+            return;
+        }
+        for (int i = 0; i < brandPillViews.size(); i++) {
+            BrandPanelDecider.BrandEntry entry = brandPillEntries.get(i);
+            int count = SafetyAlertService.countFdaMatches(
+                    entry.brand, entry.representative.product.name,
+                    lastSafetyAlerts);
+            TextView pill = brandPillViews.get(i);
+            if (count > 0) {
+                pill.setText("⚠ " + count
+                        + (count == 1 ? " recall" : " recalls"));
+                pill.setTextColor(SearchSafetyBinder.C_AMBER_900);
+                pill.setBackgroundResource(R.drawable.chip_concern_background);
+            } else {
+                pill.setText("✓ No recalls");
+                pill.setTextColor(C_GRAY_500);
+                pill.setBackgroundResource(R.drawable.chip_unavailable_background);
+            }
+            pill.setVisibility(View.VISIBLE);
+        }
+    }
+
+    /** Hairline between brand rows (LinearLayout params, unlike the
+     *  Flexbox stack divider). */
+    private View buildBrandDivider() {
+        View divider = new View(activity);
+        divider.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(1)));
+        divider.setBackgroundColor(C_GRAY_200);
+        return divider;
+    }
+
+    /** The spotlight block for the top brand (mockup Option C). */
+    private View buildBrandSpotlight(Context ctx,
+                                     BrandPanelDecider.BrandEntry entry) {
+        LinearLayout spot = new LinearLayout(ctx);
+        spot.setOrientation(LinearLayout.HORIZONTAL);
+        spot.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        spot.setPadding(dp(14), dp(12), dp(14), dp(12));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(C_MINT);
+        bg.setCornerRadius(dp(12));
+        spot.setBackground(bg);
+        LinearLayout.LayoutParams spotLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        spotLp.bottomMargin = dp(4);
+        spot.setLayoutParams(spotLp);
+
+        LinearLayout left = new LinearLayout(ctx);
+        left.setOrientation(LinearLayout.VERTICAL);
+        left.setLayoutParams(new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView topLabel = new TextView(ctx);
+        topLabel.setText("★ TOP RATED");
+        topLabel.setTextColor(C_GREEN_800);
+        topLabel.setTextSize(11f);
+        topLabel.setTypeface(null, Typeface.BOLD);
+        left.addView(topLabel);
+
+        TextView name = new TextView(ctx);
+        name.setText(entry.brand);
+        name.setTextColor(C_GRAY_900);
+        name.setTextSize(20f);
+        name.setTypeface(null, Typeface.BOLD);
+        LinearLayout.LayoutParams nameLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        nameLp.topMargin = dp(1);
+        nameLp.bottomMargin = dp(6);
+        name.setLayoutParams(nameLp);
+        left.addView(name);
+
+        left.addView(makeRecallPill(ctx, entry));
+
+        TextView go = new TextView(ctx);
+        go.setText("Tap to see the verdict ›");
+        go.setTextColor(C_GREEN_800);
+        go.setTextSize(12.5f);
+        go.setTypeface(null, Typeface.BOLD);
+        LinearLayout.LayoutParams goLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        goLp.topMargin = dp(7);
+        go.setLayoutParams(goLp);
+        left.addView(go);
+        spot.addView(left);
+
+        LinearLayout scoreCol = new LinearLayout(ctx);
+        scoreCol.setOrientation(LinearLayout.VERTICAL);
+        scoreCol.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+        TextView scoreNum = new TextView(ctx);
+        scoreNum.setText(String.valueOf(entry.overall));
+        scoreNum.setTextColor(C_GREEN_800);
+        scoreNum.setTextSize(30f);
+        scoreNum.setTypeface(null, Typeface.BOLD);
+        scoreCol.addView(scoreNum);
+        TextView scoreLbl = new TextView(ctx);
+        scoreLbl.setText("OVERALL");
+        scoreLbl.setTextColor(C_GRAY_500);
+        scoreLbl.setTextSize(10.5f);
+        scoreCol.addView(scoreLbl);
+        spot.addView(scoreCol);
+
+        wireBrandTap(spot, entry);
+        return spot;
+    }
+
+    /** One compact brand row under the spotlight. */
+    private View buildBrandRow(Context ctx,
+                               BrandPanelDecider.BrandEntry entry) {
+        LinearLayout row = new LinearLayout(ctx);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(2), dp(12), dp(2), dp(12));
+        row.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        TextView name = new TextView(ctx);
+        name.setText(entry.brand);
+        name.setTextColor(C_GRAY_900);
+        name.setTextSize(16f);
+        name.setTypeface(null, Typeface.BOLD);
+        name.setLayoutParams(new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(name);
+
+        TextView overallLbl = new TextView(ctx);
+        overallLbl.setText("Overall ");
+        overallLbl.setTextColor(C_GRAY_500);
+        overallLbl.setTextSize(13f);
+        row.addView(overallLbl);
+        TextView overallNum = new TextView(ctx);
+        overallNum.setText(String.valueOf(entry.overall));
+        overallNum.setTextColor(C_GREEN_800);
+        overallNum.setTextSize(16f);
+        overallNum.setTypeface(null, Typeface.BOLD);
+        LinearLayout.LayoutParams numLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        numLp.rightMargin = dp(8);
+        overallNum.setLayoutParams(numLp);
+        row.addView(overallNum);
+
+        row.addView(makeRecallPill(ctx, entry));
+
+        TextView chevron = new TextView(ctx);
+        chevron.setText("›");
+        chevron.setTextColor(C_GRAY_400);
+        chevron.setTextSize(18f);
+        LinearLayout.LayoutParams chevLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        chevLp.leftMargin = dp(6);
+        chevron.setLayoutParams(chevLp);
+        row.addView(chevron);
+
+        wireBrandTap(row, entry);
+        return row;
+    }
+
+    /** A hidden-until-alerts recall pill registered for its entry. */
+    private TextView makeRecallPill(Context ctx,
+                                    BrandPanelDecider.BrandEntry entry) {
+        TextView pill = new TextView(ctx);
+        pill.setTextSize(11f);
+        pill.setTypeface(null, Typeface.BOLD);
+        pill.setPadding(dp(8), dp(4), dp(8), dp(4));
+        pill.setVisibility(View.GONE);
+        pill.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        brandPillViews.add(pill);
+        brandPillEntries.add(entry);
+        return pill;
+    }
+
+    /** Tapping a brand opens its representative product's verdict. */
+    private void wireBrandTap(View view,
+                              BrandPanelDecider.BrandEntry entry) {
+        view.setClickable(true);
+        view.setOnClickListener(v -> {
+            if (alternateSearchListener != null) {
+                alternateSearchListener.onOpenAlternate(
+                        entry.representative.product);
+            }
+        });
     }
 
     /** How many rows at the top of the Exact matches stack get price/offers. */
