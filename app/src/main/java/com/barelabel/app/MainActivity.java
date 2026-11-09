@@ -519,11 +519,22 @@ private void refreshRecents() {
         runOnUiThread(() -> {
             recentsAdapter.setItems(top);
             boolean has = !top.isEmpty();
+            // Don't resurrect the strip over displayed search results:
+            // it yields while a verdict, clean-choices, or
+            // disambiguation card is on screen (see the search
+            // handler, which hides it when a search is issued).
+            boolean resultsShowing =
+                    (resultCard != null && resultCard.getVisibility() == View.VISIBLE)
+                    || (disambiguationCard != null
+                            && disambiguationCard.getVisibility() == View.VISIBLE)
+                    || (alternatesController != null
+                            && alternatesController.isCardShowing());
+            boolean showStrip = has && !resultsShowing;
             if (recentsRecycler != null) {
-                recentsRecycler.setVisibility(has ? View.VISIBLE : View.GONE);
+                recentsRecycler.setVisibility(showStrip ? View.VISIBLE : View.GONE);
             }
             if (recentsLabel != null) {
-                recentsLabel.setVisibility(has ? View.VISIBLE : View.GONE);
+                recentsLabel.setVisibility(showStrip ? View.VISIBLE : View.GONE);
             }
         });
     }).start();
@@ -984,6 +995,14 @@ private void refreshRecents() {
         if (stickyResultsBar != null) {
             stickyResultsBar.setVisibility(View.GONE);
         }
+        // Recent scans are home chrome: hide the strip while a search
+        // runs and its results are on screen. The strip sits above the
+        // result cards in the layout, and on a phone screen it pushed
+        // the first result below the fold — searches read as "no
+        // results" even when the results card was populated below it.
+        // refreshRecents() restores the strip when no results show.
+        if (recentsLabel != null) recentsLabel.setVisibility(View.GONE);
+        if (recentsRecycler != null) recentsRecycler.setVisibility(View.GONE);
 
         progress.setVisibility(ProgressBar.VISIBLE);
         searchButton.setEnabled(false);
