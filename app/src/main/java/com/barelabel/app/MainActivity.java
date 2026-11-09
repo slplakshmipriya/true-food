@@ -189,6 +189,29 @@ public class MainActivity extends AppCompatActivity {
     // USDA record behind the last tapped autocomplete suggestion (0 = none/typed query).
     private long selectedSuggestionFdcId = 0;
     private String selectedSuggestionLabel = "";
+    // Tap-through state set by openAlternate() and consumed by the
+    // search() it starts (same pattern as the suggestion state above):
+    // the tapped row's own nutrition analysis, keyed by its fdcId, so
+    // the verdict card reuses the exact analysis the results surface
+    // scored the row with — the panel's Overall and the card's Overall
+    // are then the same blend of the same numbers, instead of the card
+    // recomputing nutrition against an empty candidate cohort and
+    // collapsing to the ingredient score alone. The GTIN is kept so a
+    // GTIN-routed tap (row without an fdcId) can adopt the resolved
+    // record's id in lookupBarcodeAndSearch.
+    private long pendingTapFdcId = 0;
+    private String pendingTapGtin = "";
+    private NutritionAnalysis pendingTapAnalysis = null;
+    // Brand focus for a verdict opened from the brand panel: the
+    // tapped brand, keyed the same way. While set, the verdict's
+    // Safety reports section shows only that brand's FDA badge-rule
+    // matches — the same matches its recall pill counted — instead of
+    // every loose report for the product type.
+    private long pendingBrandFdcId = 0;
+    private String pendingBrandGtin = "";
+    private String pendingBrandFocus = null;
+    /** Brand focus consumed by the in-flight search (null = none). */
+    private String activeBrandFocus = null;
     /**
      * Monotonic search generation. Bumped on every search() so a slow
      * earlier search can never overwrite a newer search's results or
@@ -397,33 +420,12 @@ setupCategoryFilterPanel();
         });
     }
     if (alternatesController != null) {
-        alternatesController.setAlternateSearchListener(alt -> {
-            if (alt == null) return;
-            // The tapped alternate becomes the next search candidate: exact
-            // GTIN lookup when we have one (same path as a barcode scan),
-            // exact fdcId fetch when the record's id is known (same path
-            // as a tapped suggestion: the record behind the row, never a
-            // fuzzy re-search), bare-name search as the last resort. The
-            // old name fallback appended " (BRAND)", which matched no
-            // USDA description and landed on an unrelated top pick whose
-            // category panel then replaced the tapped product entirely
-            // (Broccoli (Mambo) -> "Clean options in Ketchup, Mustard,
-            // BBQ & Cheese Sauce").
-            if (!TextUtils.isEmpty(alt.gtinUpc)) {
-                lookupBarcodeAndSearch(alt.gtinUpc.trim());
-            } else if (alt.fdcId > 0) {
-                String q = alt.name == null ? "" : alt.name.trim();
-                selectedSuggestionFdcId = alt.fdcId;
-                selectedSuggestionLabel = q;
-                searchBox.setText(q);
-                search();
-            } else {
-                searchBox.setText(alt.name == null ? "" : alt.name);
-                search();
-            }
-            NestedScrollView rootScroll = findViewById(R.id.mainRootLayout);
-            if (rootScroll != null) rootScroll.smoothScrollTo(0, 0);
-        });
+        alternatesController.setAlternateSearchListener(
+                alt -> openAlternate(alt, false));
+        alternatesController.setBrandSearchListener(
+                alt -> openAlternate(alt, true));
+        alternatesController.setBrandSearchRequestListener(
+                this::focusSearchBoxForBrand);
     }
     // 5. Attach AutoComplete Manager
     // Unbranded completions (offline dictionary) take rank 1-2; USDA fills the rest.
@@ -674,6 +676,77 @@ private void refreshRecents() {
     }
 
     /**
+     * Opens a tapped results row (an exact-match / clean-choice
+     * product, or a brand panel entry's representative) as the next
+     * verdict. Routing is fdcId-first: the row was built from one
+     * exact USDA record, so fetch THAT record (same path as a tapped
+     * suggestion) — never a fuzzy re-search. The GTIN route remains
+     * only for rows with no fdcId; a bare-name search is the last
+     * resort. (GTIN-first routing was a real bug class: a GTIN-index
+     * miss degraded to a BarcodeSeed text search, which could land on
+     * the generic product type instead of the tapped brand; and the
+     * old " (BRAND)" name fallback matched no USDA description at all,
+     * landing on an unrelated top pick — Broccoli (Mambo) -> "Clean
+     * options in Ketchup, Mustard, BBQ & Cheese Sauce".)
+     *
+     * <p>The tap also stashes the row's nutrition analysis (and, for
+     * brand panel taps, the brand focus) for the search below to
+     * consume, so the verdict card agrees with the surface the user
+     * tapped: same Overall score, and a Safety reports section
+     * focused on the tapped brand.
+     */
+    private void openAlternate(ProductResult alt, boolean fromBrandPanel) {
+        if (alt == null) return;
+        pendingTapFdcId = alt.fdcId;
+        pendingTapGtin = alt.gtinUpc == null ? "" : alt.gtinUpc.trim();
+        pendingTapAnalysis = alt.nutritionAnalysis;
+        if (fromBrandPanel) {
+            pendingBrandFdcId = alt.fdcId;
+            pendingBrandGtin = pendingTapGtin;
+            pendingBrandFocus = alt.brand;
+        }
+        if (alt.fdcId > 0) {
+            String q = alt.name == null ? "" : alt.name.trim();
+            selectedSuggestionFdcId = alt.fdcId;
+            selectedSuggestionLabel = q;
+            searchBox.setText(q);
+            search();
+        } else if (!TextUtils.isEmpty(alt.gtinUpc)) {
+            lookupBarcodeAndSearch(alt.gtinUpc.trim());
+        } else {
+            searchBox.setText(alt.name == null ? "" : alt.name);
+            search();
+        }
+        NestedScrollView rootScroll = findViewById(R.id.mainRootLayout);
+        if (rootScroll != null) rootScroll.smoothScrollTo(0, 0);
+    }
+
+    /**
+     * Brand panel footer action ("Search a different brand"): puts
+     * the product label in the search box with the cursor at the
+     * start and the keyboard up, so the user types the brand in front
+     * of it ("Driscoll's" + "Strawberries") and searches — reaching
+     * any brand USDA carries, not just the brands the results pool
+     * happened to fetch. Autocomplete offers the branded records
+     * (with their fdcIds) as they type.
+     */
+    private void focusSearchBoxForBrand(String productLabel) {
+        if (searchBox == null) return;
+        NestedScrollView rootScroll = findViewById(R.id.mainRootLayout);
+        if (rootScroll != null) rootScroll.smoothScrollTo(0, 0);
+        searchBox.setText(productLabel == null ? "" : productLabel);
+        searchBox.setSelection(0);
+        searchBox.requestFocus();
+        android.view.inputmethod.InputMethodManager imm =
+                (android.view.inputmethod.InputMethodManager)
+                        getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.showSoftInput(searchBox,
+                    android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+        }
+    }
+
+    /**
      * NA-06 (Contract §6.4/§6.5, BL-S4): loads safety alerts for the
      * product just bound and inserts the "Safety reports" section
      * below the BUY! button when they arrive. Runs off the UI thread
@@ -695,6 +768,13 @@ private void refreshRecents() {
         final String category = !TextUtils.isEmpty(result.foodCategory)
                 ? result.foodCategory
                 : (foodType != null ? foodType : "");
+        // Brand focus (verdict opened from a brand panel tap): the
+        // section shows only the tapped brand's FDA badge-rule
+        // matches — the same matches its recall pill counted — so a
+        // "1 recall" brand opens a card listing exactly that recall,
+        // and a "No recalls" brand shows no section at all. Verdicts
+        // reached any other way keep the full product-level section.
+        final String focusBrand = activeBrandFocus;
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -704,6 +784,10 @@ private void refreshRecents() {
                             .alertsForProduct(productName, category);
                 } catch (Throwable t) {
                     alerts = Collections.emptyList();
+                }
+                if (focusBrand != null && !focusBrand.trim().isEmpty()) {
+                    alerts = SafetyAlertService.filterBrandMatches(
+                            focusBrand, productName, alerts);
                 }
                 final List<SafetyAlert> arrived = alerts;
                 runOnUiThread(new Runnable() {
@@ -996,6 +1080,21 @@ private void refreshRecents() {
         selectedSuggestionFdcId = 0;
         selectedSuggestionLabel = "";
 
+        // Consume the tap-through state the same way: it belongs to
+        // exactly this search and only when this search fetches the
+        // tapped record by id. Any other search clears it, so a stale
+        // stash can never leak into a later verdict.
+        final NutritionAnalysis tappedAnalysis = fdcId > 0
+                && fdcId == pendingTapFdcId ? pendingTapAnalysis : null;
+        pendingTapFdcId = 0;
+        pendingTapGtin = "";
+        pendingTapAnalysis = null;
+        activeBrandFocus = fdcId > 0 && fdcId == pendingBrandFdcId
+                ? pendingBrandFocus : null;
+        pendingBrandFdcId = 0;
+        pendingBrandGtin = "";
+        pendingBrandFocus = null;
+
         // Every search bumps the generation; a slow earlier search's UI
         // posts are dropped once a newer search has started.
         final int generation = ++searchGeneration;
@@ -1128,7 +1227,21 @@ private void refreshRecents() {
                 //    degrades nutrition to UNAVAILABLE, never the search.
                 NutritionAnalysis primaryAnalysis = null;
                 List<CohortPeer> cohortPeers = Collections.emptyList();
-                try {
+                if (tappedAnalysis != null) {
+                    // Tap-through verdict: the results surface already
+                    // analyzed this exact record against the search's
+                    // cohort and scored the row with the result.
+                    // Reuse that analysis verbatim — recomputing here
+                    // would run against an empty candidate set (the
+                    // fetched-by-id path has no candidates), the
+                    // category top-up alone rarely reaches the peer
+                    // minimum, and the card would show Nutrition
+                    // Unavailable with an Overall equal to the
+                    // ingredient score alone, contradicting the score
+                    // on the row the user just tapped.
+                    primaryAnalysis = tappedAnalysis;
+                    primaryResult.nutritionAnalysis = tappedAnalysis;
+                } else try {
                     List<CohortPeer> seedPeers = NutritionCohortService
                             .seedPeersFromCandidates(candidates, nutritionConfig());
                     NutritionCohortService.CohortResult cohortResult =
@@ -2410,6 +2523,8 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
      */
     private void showScannedLabelResult(ProductResult result) {
         // Not a search surface (§6.1): no safety line or badges here.
+        // A label verdict is never brand-focused either.
+        activeBrandFocus = null;
         if (searchSafetyBinder != null) searchSafetyBinder.clear();
         if (alternatesController != null) alternatesController.clearSafetyAlerts();
         showResult(result, "Uncategorized", false,
@@ -2489,6 +2604,22 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
             final String exactName = usdaDescription.trim();
             runOnUiThread(() -> {
                 if (progress != null) progress.setVisibility(View.GONE);
+                // A results-row tap routed here by GTIN (the row had
+                // no fdcId) stashed its analysis / brand focus keyed
+                // by that GTIN: adopt the resolved record's id so the
+                // search below consumes the stash for THIS record.
+                // Real barcode scans set no stash, so this is a no-op
+                // for them.
+                if (matchFdcId > 0 && gtin != null
+                        && gtin.trim().equals(pendingTapGtin)
+                        && pendingTapFdcId == 0) {
+                    pendingTapFdcId = matchFdcId;
+                }
+                if (matchFdcId > 0 && gtin != null
+                        && gtin.trim().equals(pendingBrandGtin)
+                        && pendingBrandFdcId == 0) {
+                    pendingBrandFdcId = matchFdcId;
+                }
                 if (matchFdcId > 0 && !exactName.isEmpty()) {
                     // Exact record known: fetch it by id via the
                     // tapped-suggestion state. The BarcodeSeed text seed

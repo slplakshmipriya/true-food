@@ -33,13 +33,16 @@ import java.util.Map;
  * </ul>
  * A brand's representative is its highest-Overall exact match (ties
  * go to the better rank). Brands are ordered by representative
- * Overall descending (ties by rank), capped at {@link #MAX_BRANDS};
- * the first entry is the spotlight.
+ * Overall descending (ties by rank); the first entry is the
+ * spotlight. The model carries EVERY brand in the exact set — the
+ * panel initially renders {@link #INITIAL_BRANDS} of them and offers
+ * an in-place "show all" expansion for the rest, so a brand the user
+ * wants is never silently cut from the list.
  */
 public final class BrandPanelDecider {
 
-    /** Most brands the panel lists. */
-    public static final int MAX_BRANDS = 8;
+    /** Brands the panel renders before the "show all" expansion. */
+    public static final int INITIAL_BRANDS = 8;
 
     private BrandPanelDecider() {
     }
@@ -163,9 +166,6 @@ public final class BrandPanelDecider {
                 return a.representative.rank - b.representative.rank;
             }
         });
-        if (entries.size() > MAX_BRANDS) {
-            entries = new ArrayList<>(entries.subList(0, MAX_BRANDS));
-        }
         return new BrandPanelModel("Brands of " + label, label,
                 Collections.unmodifiableList(entries));
     }

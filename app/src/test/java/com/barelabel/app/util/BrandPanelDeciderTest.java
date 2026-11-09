@@ -144,19 +144,22 @@ public class BrandPanelDeciderTest {
     }
 
     @Test
-    public void brandsCappedAtMax() {
+    public void allBrandsKept_beyondInitialDisplayCount() {
         List<AlternateRanker.RankedProduct> many = new ArrayList<>();
-        for (int i = 0; i < BrandPanelDecider.MAX_BRANDS + 2; i++) {
+        int total = BrandPanelDecider.INITIAL_BRANDS + 2;
+        for (int i = 0; i < total; i++) {
             many.add(ranked("Broccoli " + i, "Brand" + i,
                     "Frozen Vegetables", 50 + i, i));
         }
         BrandPanelDecider.BrandPanelModel model =
                 BrandPanelDecider.decide(true, "broccoli", many);
         assertNotNull(model);
-        assertEquals(BrandPanelDecider.MAX_BRANDS, model.brands.size());
-        // Highest overall survives the cap, lowest are cut.
-        assertEquals(50 + BrandPanelDecider.MAX_BRANDS + 1,
-                model.brands.get(0).overall);
+        // No brand is cut from the model: the panel's "show all"
+        // expansion renders past INITIAL_BRANDS from this same list.
+        assertEquals(total, model.brands.size());
+        // Highest overall still leads (the spotlight).
+        assertEquals(50 + total - 1, model.brands.get(0).overall);
+        assertEquals(50, model.brands.get(total - 1).overall);
     }
 
     @Test

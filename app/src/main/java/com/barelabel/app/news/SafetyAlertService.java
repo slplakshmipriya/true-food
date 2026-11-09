@@ -405,29 +405,19 @@ public final class SafetyAlertService {
             if (fdaAlerts == null || fdaAlerts.isEmpty()) {
                 return 0;
             }
-            Set<String> brandTokens = NewsText.tokenSet(brand);
+            Set<String> brandTokens = badgeTokens(brand);
             if (brandTokens.isEmpty()) {
                 return 0;
             }
             Set<String> otherNameTokens =
-                    new LinkedHashSet<>(NewsText.tokenSet(productName));
+                    new LinkedHashSet<>(badgeTokens(productName));
             otherNameTokens.removeAll(brandTokens);
             if (otherNameTokens.isEmpty()) {
                 return 0;
             }
             int count = 0;
             for (SafetyAlert alert : fdaAlerts) {
-                if (alert == null
-                        || alert.tier != SafetyAlert.Tier.FDA
-                        || alert.productText == null) {
-                    continue;
-                }
-                Set<String> descriptionTokens =
-                        NewsText.tokenSet(alert.productText);
-                if (!containsAny(descriptionTokens, brandTokens)) {
-                    continue;
-                }
-                if (containsAny(descriptionTokens, otherNameTokens)) {
+                if (matchesBadgeRule(brandTokens, otherNameTokens, alert)) {
                     count++;
                 }
             }
@@ -435,6 +425,77 @@ public final class SafetyAlertService {
         } catch (Throwable t) {
             return 0;
         }
+    }
+
+    /**
+     * Token set for the badge rule: {@link NewsText#tokenSet} minus
+     * single-character tokens. A one-letter token cannot identify a
+     * brand or a product, and the possessive fragment is a real
+     * false-positive source: "WYMAN'S" tokenizes to {wyman, s}, and
+     * the stray "s" matched any alert description containing an
+     * apostrophe-s ("Loard's Strawberry Ice Cream", "Member's Mark
+     * ... Strawberry"), giving every brand ending in 'S a phantom
+     * recall. Length-1 tokens are dropped on BOTH sides of the rule.
+     */
+    private static Set<String> badgeTokens(String text) {
+        Set<String> out = new LinkedHashSet<>();
+        for (String token : NewsText.tokenSet(text)) {
+            if (token.length() >= 2) {
+                out.add(token);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The filtering twin of {@link #countFdaMatches}: the FDA alerts
+     * that match the brand under the same per-alert badge rule, in
+     * input order. Backs the brand-focused Safety reports section on
+     * a verdict opened from the brand panel — the section lists
+     * exactly the recalls the brand's pill counted. NEWS alerts are
+     * never returned (they carry no brand attribution). Null or
+     * empty inputs yield an empty list. Never throws.
+     */
+    public static List<SafetyAlert> filterBrandMatches(
+            String brand, String productName, List<SafetyAlert> alerts) {
+        try {
+            if (alerts == null || alerts.isEmpty()) {
+                return Collections.emptyList();
+            }
+            Set<String> brandTokens = badgeTokens(brand);
+            if (brandTokens.isEmpty()) {
+                return Collections.emptyList();
+            }
+            Set<String> otherNameTokens =
+                    new LinkedHashSet<>(badgeTokens(productName));
+            otherNameTokens.removeAll(brandTokens);
+            if (otherNameTokens.isEmpty()) {
+                return Collections.emptyList();
+            }
+            List<SafetyAlert> out = new ArrayList<>();
+            for (SafetyAlert alert : alerts) {
+                if (matchesBadgeRule(brandTokens, otherNameTokens, alert)) {
+                    out.add(alert);
+                }
+            }
+            return out;
+        } catch (Throwable t) {
+            return Collections.emptyList();
+        }
+    }
+
+    /** One alert against the section 6.3 badge rule (FDA tier only). */
+    private static boolean matchesBadgeRule(Set<String> brandTokens,
+                                            Set<String> otherNameTokens,
+                                            SafetyAlert alert) {
+        if (alert == null
+                || alert.tier != SafetyAlert.Tier.FDA
+                || alert.productText == null) {
+            return false;
+        }
+        Set<String> descriptionTokens = NewsText.tokenSet(alert.productText);
+        return containsAny(descriptionTokens, brandTokens)
+                && containsAny(descriptionTokens, otherNameTokens);
     }
 
     private static boolean containsAny(Set<String> haystack,

@@ -178,6 +178,41 @@ public class AlternatesCardController {
     private AlternateSearchListener alternateSearchListener;
     private Runnable onClearFilters;
 
+    /**
+     * Host opens this brand panel entry's representative as the next
+     * verdict. Distinct from {@link AlternateSearchListener} so the
+     * host can brand-focus the verdict (its Safety reports section
+     * shows only this brand's recalls). Falls back to the alternate
+     * listener when unset.
+     */
+    public interface BrandSearchListener {
+        void onOpenBrand(ProductResult product);
+    }
+
+    private BrandSearchListener brandSearchListener;
+
+    public void setBrandSearchListener(BrandSearchListener listener) {
+        this.brandSearchListener = listener;
+    }
+
+    /**
+     * Host starts a search for a brand the panel does not list: the
+     * footer row hands the host the panel's product label so it can
+     * put the search box in front of the user, ready for a brand name
+     * to be typed in front of the product ("Driscoll's" +
+     * "Strawberries").
+     */
+    public interface BrandSearchRequestListener {
+        void onRequestBrandSearch(String productLabel);
+    }
+
+    private BrandSearchRequestListener brandSearchRequestListener;
+
+    public void setBrandSearchRequestListener(
+            BrandSearchRequestListener listener) {
+        this.brandSearchRequestListener = listener;
+    }
+
     /** Host unchecks one filter category and re-searches (smart relief). */
     public interface OnUncheckFilterListener {
         void onUncheckFilter(String category);
@@ -206,6 +241,10 @@ public class AlternatesCardController {
     private final List<BrandPanelDecider.BrandEntry> brandPillEntries =
             new ArrayList<>();
     private List<SafetyAlert> lastSafetyAlerts = null;
+    /** Last brand model bound, so the "show all" row can re-render
+     *  the panel expanded in place (reset on every new pool). */
+    private BrandPanelDecider.BrandPanelModel lastBrandModel = null;
+    private boolean brandPanelExpanded = false;
 
     public AlternatesCardController(AppCompatActivity activity, View card, TextView title,
                                     TextView text, SwitchCompat organicSwitch,
@@ -288,6 +327,8 @@ public class AlternatesCardController {
         this.expandedKeys.clear();
         this.nutrientCompareKeys.clear();
         this.compareBoxes.clear();
+        this.brandPanelExpanded = false;
+        this.lastBrandModel = null;
         partitionPool();
     }
 
@@ -781,7 +822,12 @@ public class AlternatesCardController {
         subtitle.setLayoutParams(subLp);
         brandList.addView(subtitle);
 
-        for (int i = 0; i < model.brands.size(); i++) {
+        lastBrandModel = model;
+        int total = model.brands.size();
+        int shown = brandPanelExpanded
+                ? total
+                : Math.min(BrandPanelDecider.INITIAL_BRANDS, total);
+        for (int i = 0; i < shown; i++) {
             BrandPanelDecider.BrandEntry entry = model.brands.get(i);
             if (i == 0) {
                 brandList.addView(buildBrandSpotlight(ctx, entry));
@@ -790,8 +836,75 @@ public class AlternatesCardController {
                 brandList.addView(buildBrandRow(ctx, entry));
             }
         }
+        if (shown < total) {
+            brandList.addView(buildBrandDivider());
+            brandList.addView(buildShowAllBrandsRow(ctx, total - shown));
+        }
+        brandList.addView(buildBrandDivider());
+        brandList.addView(buildBrandSearchRow(ctx, model.productLabel));
         brandList.setVisibility(View.VISIBLE);
         renderBrandRecallPills();
+    }
+
+    /** "Show all brands" row: expands the panel in place. */
+    private View buildShowAllBrandsRow(Context ctx, int hiddenCount) {
+        TextView row = new TextView(ctx);
+        row.setText("Show all brands (" + hiddenCount + " more) ›");
+        row.setTextColor(C_GREEN_800);
+        row.setTextSize(14f);
+        row.setTypeface(null, Typeface.BOLD);
+        row.setPadding(dp(2), dp(12), dp(2), dp(12));
+        row.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        row.setClickable(true);
+        row.setOnClickListener(v -> {
+            brandPanelExpanded = true;
+            if (lastBrandModel != null) {
+                bindBrandPanel(lastBrandModel);
+            }
+        });
+        return row;
+    }
+
+    /**
+     * Footer row for a brand the panel does not list at all (the
+     * results pool only fetched so many records): tapping hands the
+     * product label to the host, which puts the search box in front
+     * of the user ready for a brand name — any brand USDA carries is
+     * reachable that way, not just the pooled ones.
+     */
+    private View buildBrandSearchRow(Context ctx, String productLabel) {
+        LinearLayout row = new LinearLayout(ctx);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(dp(2), dp(12), dp(2), dp(12));
+        row.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        TextView title = new TextView(ctx);
+        title.setText("Don't see your brand?");
+        title.setTextColor(C_GRAY_900);
+        title.setTextSize(14f);
+        title.setTypeface(null, Typeface.BOLD);
+        row.addView(title);
+        TextView sub = new TextView(ctx);
+        sub.setText("Tap to search for it — type the brand name in "
+                + "front of \"" + productLabel + "\" above.");
+        sub.setTextColor(C_GRAY_500);
+        sub.setTextSize(12.5f);
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        subLp.topMargin = dp(2);
+        sub.setLayoutParams(subLp);
+        row.addView(sub);
+        row.setClickable(true);
+        row.setOnClickListener(v -> {
+            if (brandSearchRequestListener != null) {
+                brandSearchRequestListener.onRequestBrandSearch(productLabel);
+            }
+        });
+        return row;
     }
 
     /** Leaves brand mode: panel container emptied, carousel restored. */
@@ -1009,7 +1122,10 @@ public class AlternatesCardController {
                               BrandPanelDecider.BrandEntry entry) {
         view.setClickable(true);
         view.setOnClickListener(v -> {
-            if (alternateSearchListener != null) {
+            if (brandSearchListener != null) {
+                brandSearchListener.onOpenBrand(
+                        entry.representative.product);
+            } else if (alternateSearchListener != null) {
                 alternateSearchListener.onOpenAlternate(
                         entry.representative.product);
             }

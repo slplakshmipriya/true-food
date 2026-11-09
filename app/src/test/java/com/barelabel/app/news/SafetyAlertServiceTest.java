@@ -2,6 +2,7 @@ package com.barelabel.app.news;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -711,6 +712,95 @@ public class SafetyAlertServiceTest {
         assertEquals(0, SafetyAlertService.countFdaMatches(
                 "Sunnyvale", "Sunnyvale Organic Strawberries",
                 notMatching));
+    }
+
+    // ------------------------------------------------------------------
+    // Brand filtering (brand-focused verdict section): the filtering
+    // twin of the counting rule — the section lists what the pill counted
+    // ------------------------------------------------------------------
+
+    @Test
+    public void filter_returnsExactlyTheCountedAlerts_inOrder() {
+        SafetyAlert first = fdaAlert("Sunnyvale Organic Strawberries, 16 oz");
+        SafetyAlert other = fdaAlert("Organic strawberries grown in California");
+        SafetyAlert second = fdaAlert("SUNNYVALE STRAWBERRIES — expanded recall");
+        SafetyAlert wrongProduct = fdaAlert("Sunnyvale apple juice, 64 oz");
+        List<SafetyAlert> alerts = Arrays.asList(first, other, second, wrongProduct);
+        List<SafetyAlert> filtered = SafetyAlertService.filterBrandMatches(
+                "Sunnyvale", "Sunnyvale Organic Strawberries", alerts);
+        assertEquals(2, filtered.size());
+        assertSame(first, filtered.get(0));
+        assertSame(second, filtered.get(1));
+        // The filter and the count are the same rule, so they agree.
+        assertEquals(filtered.size(), SafetyAlertService.countFdaMatches(
+                "Sunnyvale", "Sunnyvale Organic Strawberries", alerts));
+    }
+
+    @Test
+    public void filter_newsAlertsNeverReturned() {
+        SafetyAlert news = new SafetyAlert(SafetyAlert.Tier.NEWS,
+                "Sunnyvale strawberries recalled", null, null, "meta",
+                "News report", "story-link", null, null, null, null,
+                20261107);
+        assertTrue(SafetyAlertService.filterBrandMatches("Sunnyvale",
+                "Sunnyvale Organic Strawberries",
+                Collections.singletonList(news)).isEmpty());
+    }
+
+    @Test
+    public void filter_noBrandMatch_empty() {
+        // The Wyman's case in reverse: a brand with no badge-rule
+        // match gets an empty section even when the product type has
+        // loose reports — its pill said "No recalls".
+        List<SafetyAlert> alerts = Arrays.asList(
+                fdaAlert("Organic strawberries grown in California"),
+                fdaAlert("EAK Distribution sprouting seeds for strawberries"));
+        assertTrue(SafetyAlertService.filterBrandMatches("New Seasons",
+                "New Seasons Organic Strawberries", alerts).isEmpty());
+    }
+
+    @Test
+    public void filter_nullAndEmptyInputs_empty() {
+        List<SafetyAlert> alerts = Collections.singletonList(
+                fdaAlert("Sunnyvale Organic Strawberries"));
+        assertTrue(SafetyAlertService.filterBrandMatches(
+                null, "Sunnyvale Organic Strawberries", alerts).isEmpty());
+        assertTrue(SafetyAlertService.filterBrandMatches(
+                "Sunnyvale", null, alerts).isEmpty());
+        assertTrue(SafetyAlertService.filterBrandMatches(
+                "Sunnyvale", "Sunnyvale Organic Strawberries", null).isEmpty());
+        assertTrue(SafetyAlertService.filterBrandMatches(
+                "Sunnyvale", "Sunnyvale Organic Strawberries",
+                Collections.<SafetyAlert>emptyList()).isEmpty());
+    }
+
+    @Test
+    public void count_possessiveBrand_noPhantomMatchFromStrayS() {
+        // Regression (device, strawberries): WYMAN'S and WELCH'S each
+        // showed 1 recall. Their token sets contain the possessive
+        // fragment "s", which matched unrelated descriptions that
+        // contain an apostrophe-s plus the product token. openFDA has
+        // no Wyman's or Welch's strawberry recall at all.
+        List<SafetyAlert> alerts = Arrays.asList(
+                fdaAlert("Loard's Strawberry Ice Cream — 32 oz; 56 oz"),
+                fdaAlert("Member's Mark FREEZE DRIED FRUIT VARIETY PACK "
+                        + "STRAWBERRY POUCHES"));
+        assertEquals(0, SafetyAlertService.countFdaMatches(
+                "WYMAN'S", "Strawberries", alerts));
+        assertEquals(0, SafetyAlertService.countFdaMatches(
+                "WELCH'S", "Strawberries", alerts));
+        assertTrue(SafetyAlertService.filterBrandMatches(
+                "WYMAN'S", "Strawberries", alerts).isEmpty());
+    }
+
+    @Test
+    public void count_possessiveBrand_realMatchStillCounts() {
+        List<SafetyAlert> alerts = Collections.singletonList(
+                fdaAlert("WYMAN'S Strawberries, frozen, 32 oz"));
+        assertEquals(1, SafetyAlertService.countFdaMatches(
+                "WYMAN'S", "Strawberries", alerts));
+        assertEquals(1, SafetyAlertService.filterBrandMatches(
+                "WYMAN'S", "Strawberries", alerts).size());
     }
 
     @Test
