@@ -2412,6 +2412,7 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
         new Thread(() -> {
             String usdaDescription = "";
             String usdaBrand = "";
+            long usdaFdcId = 0;
 
             try {
                 // Try GTIN spellings: as-scanned, then with leading zeros stripped
@@ -2445,6 +2446,7 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
 
                 if (match != null) {
                     usdaDescription = match.optString("description", "");
+                    usdaFdcId = match.optLong("fdcId", 0);
                     String matchBrandName = match.optString("brandName", "");
                     usdaBrand = !matchBrandName.isEmpty() ? matchBrandName
                             : match.optString("brandOwner", "");
@@ -2468,7 +2470,7 @@ private void applyOnboardingPreset(AvoidListPresets.Preset preset,
             // When the GTIN lookup hit, the exact record is already in
             // hand — keep its id so the UI thread can fetch THAT record
             // instead of degrading to a fuzzy text search (below).
-            final long matchFdcId = match != null ? match.optLong("fdcId", 0) : 0;
+            final long matchFdcId = usdaFdcId;
             final String exactName = usdaDescription.trim();
             runOnUiThread(() -> {
                 if (progress != null) progress.setVisibility(View.GONE);
